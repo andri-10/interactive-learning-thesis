@@ -5,10 +5,12 @@ import jakarta.persistence.*;
 import java.util.HashSet;
 import java.util.Set;
 import com.thesis.interactive_learning.model.Document;
+import lombok.Data;
 import lombok.Getter;
 
 @Entity
 @Table(name = "users")
+@Data
 public class User {
 
     @Id
