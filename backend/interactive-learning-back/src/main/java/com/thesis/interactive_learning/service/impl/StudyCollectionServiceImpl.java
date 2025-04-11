@@ -5,10 +5,12 @@ import com.thesis.interactive_learning.model.User;
 import com.thesis.interactive_learning.repository.StudyCollectionRepository;
 import com.thesis.interactive_learning.repository.UserRepository;
 import com.thesis.interactive_learning.service.StudyCollectionService;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
 
+@Service
 public class StudyCollectionServiceImpl implements StudyCollectionService {
 
     private final StudyCollectionRepository studyCollectionRepository;
