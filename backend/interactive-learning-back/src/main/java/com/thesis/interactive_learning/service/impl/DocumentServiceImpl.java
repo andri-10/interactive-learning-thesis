@@ -20,9 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class DocumentServiceImpl implements DocumentService {
@@ -107,7 +105,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public List<Document> getDocumentsByCollectionId(Long collectionId) {
-        return documentRepository.findByStudyCollection(collectionId);
+        return documentRepository.findByStudyCollectionId(collectionId);
     }
 
     @Override
@@ -136,4 +134,94 @@ public class DocumentServiceImpl implements DocumentService {
             return pdfStripper.getText(pdDocument);
         }
     }
+
+    @Override
+    public Map<String, Object> extractStructuredTextFromPdf(Long documentId) throws IOException {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+
+        File file = new File(document.getFilePath());
+        if (!file.exists()) {
+            throw new RuntimeException("File not found on disk");
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        List<String> paragraphs = new ArrayList<>();
+
+        try (PDDocument pdDocument = PDDocument.load(file)) {
+            int totalPages = pdDocument.getNumberOfPages();
+            result.put("pageCount", totalPages);
+
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setSortByPosition(true);
+
+            String fullText = stripper.getText(pdDocument);
+            result.put("fullText", fullText);
+
+            String[] lines = fullText.split("\n");
+            StringBuilder currentParagraph = new StringBuilder();
+
+            for (String line : lines) {
+                if (line.trim().isEmpty() && currentParagraph.length() > 0) {
+                    paragraphs.add(currentParagraph.toString().trim());
+                    currentParagraph = new StringBuilder();
+                } else if (!line.trim().isEmpty()) {
+                    if (!currentParagraph.isEmpty()) {
+                        currentParagraph.append(" ");
+                    }
+                    currentParagraph.append(line.trim());
+                }
+            }
+
+            if (!currentParagraph.isEmpty()) {
+                paragraphs.add(currentParagraph.toString().trim());
+            }
+
+            Map<Integer, String> pageTexts = new HashMap<>();
+            for (int i = 1; i <= totalPages; i++) {
+                stripper.setStartPage(i);
+                stripper.setEndPage(i);
+                pageTexts.put(i, stripper.getText(pdDocument));
+            }
+            result.put("pageTexts", pageTexts);
+
+            List<String> possibleHeadings = new ArrayList<>();
+            for (String paragraph : paragraphs) {
+                if (paragraph.length() < 100 && (paragraph.endsWith(":") ||
+                        paragraph.toUpperCase().equals(paragraph) ||
+                        Character.isDigit(paragraph.charAt(0)))) {
+                    possibleHeadings.add(paragraph);
+                }
+            }
+            result.put("possibleHeadings", possibleHeadings);
+        }
+
+        result.put("paragraphs", paragraphs);
+        return result;
+    }
+
+    public Map<String, Object> extractDocumentMetadata(Long documentId) throws IOException {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+
+        File file = new File(document.getFilePath());
+        Map<String, Object> metadata = new HashMap<>();
+
+        try (PDDocument pdDocument = PDDocument.load(file)) {
+            metadata.put("pageCount", pdDocument.getNumberOfPages());
+            metadata.put("title", document.getTitle());
+
+            if (pdDocument.getDocumentInformation() != null) {
+                metadata.put("author", pdDocument.getDocumentInformation().getAuthor());
+                metadata.put("subject", pdDocument.getDocumentInformation().getSubject());
+                metadata.put("keywords", pdDocument.getDocumentInformation().getKeywords());
+                metadata.put("creator", pdDocument.getDocumentInformation().getCreator());
+                metadata.put("producer", pdDocument.getDocumentInformation().getProducer());
+                metadata.put("creationDate", pdDocument.getDocumentInformation().getCreationDate());
+            }
+        }
+
+        return metadata;
+    }
+
 }

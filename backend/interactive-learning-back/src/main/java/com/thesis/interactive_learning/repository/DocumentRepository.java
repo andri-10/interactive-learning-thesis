@@ -12,6 +12,7 @@ import java.util.List;
 public interface DocumentRepository extends JpaRepository<Document, Long> {
 
     List<Document> findByUser(User user);
-    List<Document> findByStudyCollection(Long collectionId);
+    List<Document> findByStudyCollectionId(Long collectionId);
+
 
 }
