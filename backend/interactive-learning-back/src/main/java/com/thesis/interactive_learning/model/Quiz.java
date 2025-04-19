@@ -3,6 +3,7 @@ package com.thesis.interactive_learning.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
@@ -22,6 +23,9 @@ public class Quiz {
 
     @Column
     private String description;
+
+    @Column
+    private boolean microbitCompatible = true;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
