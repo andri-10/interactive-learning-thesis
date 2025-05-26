@@ -1,5 +1,6 @@
 package com.thesis.interactive_learning.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -11,6 +12,7 @@ import java.util.Set;
 @Table(name = "documents")
 @Data
 @NoArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Document {
 
     @Id
@@ -38,14 +40,17 @@ public class Document {
     @Column
     private Integer pageCount;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnoreProperties({"documents", "studyCollections", "userProgress", "password"})
     private User user;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "collection_id")
+    @JsonIgnoreProperties({"documents", "user", "quizzes"})
     private StudyCollection studyCollection;
 
-    @OneToMany(mappedBy = "document", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "document", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({"document", "questions", "userProgress"})
     private Set<Quiz> quizzes = new HashSet<>();
 }

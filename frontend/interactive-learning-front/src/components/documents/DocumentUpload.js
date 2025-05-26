@@ -61,11 +61,24 @@ const DocumentUpload = ({ onUploadSuccess }) => {
 
     alert('Document uploaded successfully!');
   } catch (error) {
-    console.error('Upload error:', error);
-    setError(error.response?.data?.message || error.response?.data || 'Upload failed');
-  } finally {
-    setLoading(false);
+  console.error('Upload error:', error);
+  console.error('Error response:', error.response);
+  
+  let errorMessage = 'Upload failed';
+  if (error.response?.data) {
+    if (typeof error.response.data === 'string') {
+      errorMessage = error.response.data;
+    } else if (error.response.data.message) {
+      errorMessage = error.response.data.message;
+    } else {
+      errorMessage = JSON.stringify(error.response.data);
+    }
   }
+  
+  setError(errorMessage);
+} finally {
+  setLoading(false);
+}
 };
 
   return (

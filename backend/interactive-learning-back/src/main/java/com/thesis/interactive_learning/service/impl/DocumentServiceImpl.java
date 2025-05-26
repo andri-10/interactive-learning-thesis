@@ -29,7 +29,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final StudyCollectionRepository studyCollectionRepository;
 
 
-    @Value("${file.upload-dir:uploads}")
+    @Value("${file.upload-directory}")
     private String uploadDir;
 
     @Autowired
@@ -44,8 +44,18 @@ public class DocumentServiceImpl implements DocumentService {
         return documentRepository.save(document);
     }
 
+    private void ensureUploadDirectoryExists(String uploadPath) {
+        File uploadDir = new File(uploadPath).getParentFile();
+        if (!uploadDir.exists()) {
+            boolean created = uploadDir.mkdirs();
+            System.out.println("Upload directory created: " + created + " at " + uploadDir.getAbsolutePath());
+        }
+    }
+
     @Override
     public Document uploadDocument(MultipartFile file, String title, String description, Long userId, Long collectionId) throws IOException {
+
+        System.out.println("Upload directory from config: " + uploadDir);
 
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User Not Found"));
 
@@ -55,9 +65,13 @@ public class DocumentServiceImpl implements DocumentService {
                     .orElseThrow(() -> new RuntimeException("Collection not found"));
         }
 
-        Path uploadPath = Paths.get(uploadDir);
+        // Create upload directory with absolute path
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
+        System.out.println("Resolved upload path: " + uploadPath);
+
         if (!Files.exists(uploadPath)) {
             Files.createDirectories(uploadPath);
+            System.out.println("Created upload directory: " + uploadPath);
         }
 
         String originalFilename = file.getOriginalFilename();
@@ -65,13 +79,20 @@ public class DocumentServiceImpl implements DocumentService {
         String filename = UUID.randomUUID().toString() + fileExtension;
         Path filePath = uploadPath.resolve(filename);
 
+        System.out.println("Final file path: " + filePath.toAbsolutePath());
+
+        // Save the file
         file.transferTo(filePath.toFile());
 
+        System.out.println("File saved successfully!");
+
+        // Extract page count from PDF
         int pageCount = 0;
         try (PDDocument pdDocument = PDDocument.load(filePath.toFile())) {
             pageCount = pdDocument.getNumberOfPages();
         }
 
+        // Create and save document entity
         Document document = new Document();
         document.setTitle(title);
         document.setDescription(description);
@@ -110,15 +131,25 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public void deleteDocument(Long id) {
-    Optional<Document> documentOpt = documentRepository.findById(id);
-    if (documentOpt.isPresent()) {
-        Document document = documentOpt.get();
-        try{
-            Files.deleteIfExists(Paths.get(document.getFilePath()));
-        }catch(IOException e){
-            throw new RuntimeException("File not found", e);
+        Optional<Document> documentOpt = documentRepository.findById(id);
+        if (documentOpt.isPresent()) {
+            Document document = documentOpt.get();
+
+            System.out.println("Deleting document: " + document.getTitle());
+
+            try {
+                Files.deleteIfExists(Paths.get(document.getFilePath()));
+                System.out.println("Physical file deleted: " + document.getFilePath());
+            } catch (IOException e) {
+                System.out.println("Could not delete physical file: " + e.getMessage());
+            }
+
+            documentRepository.delete(document);
+            System.out.println("Document deleted from database");
+
+        } else {
+            throw new RuntimeException("Document not found with id: " + id);
         }
-    }
     }
 
     @Override

@@ -30,12 +30,25 @@ public class DocumentController {
             @RequestParam("description") String description,
             @RequestParam("userId") Long userId,
             @RequestParam(value = "collectionId", required = false) Long collectionId) {
+
+        System.out.println("=== UPLOAD REQUEST RECEIVED ===");
+        System.out.println("File: " + file.getOriginalFilename());
+        System.out.println("Title: " + title);
+        System.out.println("Description: " + description);
+        System.out.println("UserId: " + userId);
+        System.out.println("File size: " + file.getSize());
+        System.out.println("Collection ID: " + collectionId);
+
         try {
             Document document = documentService.uploadDocument(file, title, description, userId, collectionId);
             return new ResponseEntity<>(document, HttpStatus.CREATED);
         } catch (IOException e) {
+            System.out.println("IOException during upload: " + e.getMessage());
+            e.printStackTrace();
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         } catch (RuntimeException e) {
+            System.out.println("RuntimeException during upload: " + e.getMessage());
+            e.printStackTrace();
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
     }
