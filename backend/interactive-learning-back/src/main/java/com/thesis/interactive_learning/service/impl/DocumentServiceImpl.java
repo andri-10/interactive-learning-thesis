@@ -1,9 +1,11 @@
 package com.thesis.interactive_learning.service.impl;
 
 import com.thesis.interactive_learning.model.Document;
+import com.thesis.interactive_learning.model.Quiz;
 import com.thesis.interactive_learning.model.StudyCollection;
 import com.thesis.interactive_learning.model.User;
 import com.thesis.interactive_learning.repository.DocumentRepository;
+import com.thesis.interactive_learning.repository.QuizRepository;
 import com.thesis.interactive_learning.repository.StudyCollectionRepository;
 import com.thesis.interactive_learning.repository.UserRepository;
 import com.thesis.interactive_learning.service.DocumentService;
@@ -27,16 +29,17 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final StudyCollectionRepository studyCollectionRepository;
-
+    private final QuizRepository quizRepository;
 
     @Value("${file.upload-directory}")
     private String uploadDir;
 
     @Autowired
-    public DocumentServiceImpl(DocumentRepository documentRepository, UserRepository userRepository, StudyCollectionRepository studyCollectionRepository) {
+    public DocumentServiceImpl(DocumentRepository documentRepository, UserRepository userRepository, StudyCollectionRepository studyCollectionRepository, QuizRepository quizRepository) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.studyCollectionRepository = studyCollectionRepository;
+        this.quizRepository = quizRepository;
     }
 
     @Override
@@ -131,24 +134,56 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public void deleteDocument(Long id) {
-        Optional<Document> documentOpt = documentRepository.findById(id);
-        if (documentOpt.isPresent()) {
-            Document document = documentOpt.get();
+        try {
+            Optional<Document> documentOpt = documentRepository.findById(id);
+            if (documentOpt.isPresent()) {
+                Document document = documentOpt.get();
 
-            System.out.println("Deleting document: " + document.getTitle());
+                System.out.println("Deleting document: " + document.getTitle());
 
-            try {
-                Files.deleteIfExists(Paths.get(document.getFilePath()));
-                System.out.println("Physical file deleted: " + document.getFilePath());
-            } catch (IOException e) {
-                System.out.println("Could not delete physical file: " + e.getMessage());
+                // Delete associated quizzes first
+                List<Quiz> associatedQuizzes = quizRepository.findByDocumentId(id);
+                System.out.println("Found " + associatedQuizzes.size() + " associated quizzes");
+
+                for (Quiz quiz : associatedQuizzes) {
+                    try {
+                        System.out.println("Deleting quiz: " + quiz.getTitle() + " (ID: " + quiz.getId() + ")");
+                        quizRepository.deleteById(quiz.getId());
+                        System.out.println("Quiz deleted successfully");
+                    } catch (Exception e) {
+                        System.out.println("Error deleting quiz: " + e.getMessage());
+                        e.printStackTrace();
+                        throw new RuntimeException("Failed to delete associated quiz", e);
+                    }
+                }
+
+                // Delete physical file
+                try {
+                    Files.deleteIfExists(Paths.get(document.getFilePath()));
+                    System.out.println("Physical file deleted: " + document.getFilePath());
+                } catch (IOException e) {
+                    System.out.println("Could not delete physical file: " + e.getMessage());
+                    // Don't throw exception here - continue with database deletion
+                }
+
+                // Delete document from database
+                try {
+                    System.out.println("Deleting document from database...");
+                    documentRepository.deleteById(id);
+                    System.out.println("Document deleted successfully from database");
+                } catch (Exception e) {
+                    System.out.println("Error deleting document: " + e.getMessage());
+                    e.printStackTrace();
+                    throw new RuntimeException("Failed to delete document", e);
+                }
+
+            } else {
+                throw new RuntimeException("Document not found with id: " + id);
             }
-
-            documentRepository.delete(document);
-            System.out.println("Document deleted from database");
-
-        } else {
-            throw new RuntimeException("Document not found with id: " + id);
+        } catch (Exception e) {
+            System.out.println("Overall error in deleteDocument: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Document deletion failed", e);
         }
     }
 

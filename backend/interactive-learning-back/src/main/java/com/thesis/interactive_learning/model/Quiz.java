@@ -1,8 +1,11 @@
 package com.thesis.interactive_learning.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -12,6 +15,9 @@ import java.util.Set;
 @Table(name = "quizzes")
 @Data
 @NoArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+@EqualsAndHashCode(exclude = {"studyCollection", "questions", "document"})
+@ToString(exclude = {"studyCollection", "questions", "document"})
 public class Quiz {
 
     @Id
@@ -30,14 +36,17 @@ public class Quiz {
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "collection_id")
+    @JsonIgnoreProperties({"quizzes", "documents", "user"})
     private StudyCollection studyCollection;
 
-    @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({"quiz"})
     private Set<Question> questions = new HashSet<>();
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "document_id")
+    @JsonIgnoreProperties({"quizzes", "user", "studyCollection"})
     private Document document;
 }
