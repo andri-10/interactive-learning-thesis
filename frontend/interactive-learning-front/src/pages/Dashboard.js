@@ -38,7 +38,14 @@ const Dashboard = () => {
                 border: '2px solid var(--primary)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                ':hover': { transform: 'translateY(-2px)' }
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
               }}
             >
               <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
@@ -47,19 +54,36 @@ const Dashboard = () => {
             </div>
           </Link>
           
-          <div 
-            className="card"
-            style={{ 
-              padding: '30px', 
-              textAlign: 'center',
-              border: '2px solid var(--secondary)',
-              opacity: 0.6
+          <Link 
+            to="/collections"
+            style={{
+              textDecoration: 'none',
+              color: 'inherit'
             }}
           >
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
-            <h3 style={{ marginBottom: '8px', color: 'var(--secondary)' }}>Collections</h3>
-            <p style={{ color: 'var(--text-secondary)' }}>Coming Soon</p>
-          </div>
+            <div 
+              className="card"
+              style={{ 
+                padding: '30px', 
+                textAlign: 'center',
+                border: '2px solid var(--secondary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
+              <h3 style={{ marginBottom: '8px', color: 'var(--secondary)' }}>Collections</h3>
+              <p style={{ color: 'var(--text-secondary)' }}>Organize documents into collections</p>
+            </div>
+          </Link>
           
           <div 
             className="card"

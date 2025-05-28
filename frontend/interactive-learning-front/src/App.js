@@ -5,6 +5,9 @@ import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
 import Documents from './pages/Documents';
+import Collections from './pages/Collections';
+import QuizTaking from './pages/QuizTaking';
+import QuizResults from './pages/QuizResults';
 import './styles/globals.css';
 
 // Protected Route component
@@ -55,6 +58,30 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Documents />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/collections" 
+              element={
+                <ProtectedRoute>
+                  <Collections />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/quiz/:quizId" 
+              element={
+                <ProtectedRoute>
+                  <QuizTaking />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/quiz-results" 
+              element={
+                <ProtectedRoute>
+                  <QuizResults />
                 </ProtectedRoute>
               } 
             />
