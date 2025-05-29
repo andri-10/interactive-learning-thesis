@@ -21,8 +21,12 @@ const Dashboard = () => {
         
         <p style={{ marginBottom: '30px' }}>Hello {user?.username}! You've successfully logged in.</p>
         
-        {/* Quick Actions */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+        {/* Quick Actions - Fixed sizing */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+          gap: '20px'
+        }}>
           <Link 
             to="/documents"
             style={{
@@ -38,6 +42,10 @@ const Dashboard = () => {
                 border: '2px solid var(--primary)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
+                height: '200px', // Fixed height
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-2px)';
@@ -69,6 +77,10 @@ const Dashboard = () => {
                 border: '2px solid var(--secondary)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
+                height: '200px', // Fixed height
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-2px)';
@@ -85,19 +97,40 @@ const Dashboard = () => {
             </div>
           </Link>
           
-          <div 
-            className="card"
-            style={{ 
-              padding: '30px', 
-              textAlign: 'center',
-              border: '2px solid var(--accent)',
-              opacity: 0.6
+          <Link 
+            to="/quizzes"
+            style={{
+              textDecoration: 'none',
+              color: 'inherit'
             }}
           >
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🧠</div>
-            <h3 style={{ marginBottom: '8px', color: 'var(--accent)' }}>Quizzes</h3>
-            <p style={{ color: 'var(--text-secondary)' }}>Coming Soon</p>
-          </div>
+            <div 
+              className="card"
+              style={{ 
+                padding: '30px', 
+                textAlign: 'center',
+                border: '2px solid var(--accent)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                height: '200px', // Fixed height
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>🧠</div>
+              <h3 style={{ marginBottom: '8px', color: 'var(--accent)' }}>Quizzes</h3>
+              <p style={{ color: 'var(--text-secondary)' }}>Take quizzes from your documents</p>
+            </div>
+          </Link>
         </div>
       </div>
     </div>

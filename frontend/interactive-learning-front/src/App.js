@@ -8,6 +8,7 @@ import Documents from './pages/Documents';
 import Collections from './pages/Collections';
 import QuizTaking from './pages/QuizTaking';
 import QuizResults from './pages/QuizResults';
+import Quizzes from './pages/Quizzes';
 import './styles/globals.css';
 
 // Protected Route component
@@ -82,6 +83,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <QuizResults />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/quizzes" 
+              element={
+                <ProtectedRoute>
+                  <Quizzes />
                 </ProtectedRoute>
               } 
             />

@@ -20,9 +20,24 @@ public class StudyCollectionController {
     }
 
     @PostMapping
-    public ResponseEntity<StudyCollection> createCollection(@RequestBody StudyCollection collection) {
-        StudyCollection savedCollection = studyCollectionService.saveCollection(collection);
-        return new ResponseEntity<>(savedCollection, HttpStatus.CREATED);
+    public ResponseEntity<?> createCollection(@RequestBody StudyCollection collection) {
+        try {
+            System.out.println("=== CREATE COLLECTION REQUEST ===");
+            System.out.println("Collection name: " + collection.getName());
+            System.out.println("Collection description: " + collection.getDescription());
+            System.out.println("Collection user: " + collection.getUser());
+
+            StudyCollection savedCollection = studyCollectionService.saveCollection(collection);
+            System.out.println("Collection created successfully with ID: " + savedCollection.getId());
+            System.out.println("Returning collection: " + savedCollection.getName());
+            System.out.println("Collection has user: " + (savedCollection.getUser() != null));
+
+            return new ResponseEntity<>(savedCollection, HttpStatus.CREATED);
+        } catch (Exception e) {
+            System.out.println("ERROR creating collection: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>("Failed to create collection: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     @GetMapping("/{id}")

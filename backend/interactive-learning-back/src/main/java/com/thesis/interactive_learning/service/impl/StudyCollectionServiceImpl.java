@@ -23,8 +23,30 @@ public class StudyCollectionServiceImpl implements StudyCollectionService {
 
     @Override
     public StudyCollection saveCollection(StudyCollection collection) {
-        return studyCollectionRepository.save(collection);
+        System.out.println("Saving collection: " + collection.getName());
+
+        // If user is not set, assign a default user
+        if (collection.getUser() == null) {
+            Optional<User> defaultUser = userRepository.findById(1L);
+            if (defaultUser.isPresent()) {
+                collection.setUser(defaultUser.get());
+                System.out.println("Assigned default user to collection");
+            } else {
+                throw new RuntimeException("Default user not found");
+            }
+        }
+
+        StudyCollection saved = studyCollectionRepository.save(collection);
+
+        // Populate transient fields for JSON response
+        saved.setUserId(saved.getUser().getId());
+        saved.setDocumentCount(saved.getDocuments().size());
+        saved.setQuizCount(saved.getQuizzes().size());
+
+        System.out.println("Collection saved with ID: " + saved.getId());
+        return saved;
     }
+
 
     @Override
     public Optional<StudyCollection> getCollectionById(Long id) {
@@ -33,7 +55,18 @@ public class StudyCollectionServiceImpl implements StudyCollectionService {
 
     @Override
     public List<StudyCollection> getAllCollections() {
-        return studyCollectionRepository.findAll();
+        List<StudyCollection> collections = studyCollectionRepository.findAll();
+
+        // Populate transient fields for each collection
+        for (StudyCollection collection : collections) {
+            if (collection.getUser() != null) {
+                collection.setUserId(collection.getUser().getId());
+            }
+            collection.setDocumentCount(collection.getDocuments().size());
+            collection.setQuizCount(collection.getQuizzes().size());
+        }
+
+        return collections;
     }
 
     @Override
