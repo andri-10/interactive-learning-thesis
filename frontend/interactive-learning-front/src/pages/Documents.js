@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import Navigation from '../components/common/Navigation';
 import DragDropUpload from '../components/documents/DragDropUpload';
 import DocumentList from '../components/documents/DocumentList';
 
 const Documents = () => {
-  const { user, logout } = useAuth();
   const [refreshList, setRefreshList] = useState(0);
 
   const handleUploadSuccess = () => {
@@ -12,29 +11,50 @@ const Documents = () => {
   };
 
   return (
-    <div className="container" style={{ marginTop: '20px' }}>
-      {/* Simple Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-        <h1>📚 My Documents</h1>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <span>Welcome, {user?.username}!</span>
-          <button 
-            onClick={logout}
-            className="btn-primary"
-            style={{ backgroundColor: 'var(--error)', padding: '8px 16px', fontSize: '14px' }}
-          >
-            Logout
-          </button>
+    <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)' }}>
+      {/* Navigation */}
+      <Navigation />
+      
+      {/* Main Content */}
+      <div className="container" style={{ marginTop: '30px', paddingBottom: '40px' }}>
+        {/* Page Header */}
+        <div style={{ marginBottom: '30px' }}>
+          <h1 style={{ 
+            color: 'var(--text-primary)', 
+            fontSize: '32px',
+            fontWeight: 'bold',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            📚 My Documents
+          </h1>
+          <p style={{ 
+            color: 'var(--text-secondary)', 
+            fontSize: '16px',
+            margin: '8px 0 0 0'
+          }}>
+            Upload and manage your PDF documents to generate interactive quizzes.
+          </p>
         </div>
-      </div>
 
-      {/* Upload Section */}
-      <DragDropUpload onUploadSuccess={handleUploadSuccess} />
+        {/* Upload Section */}
+        <DragDropUpload onUploadSuccess={handleUploadSuccess} />
 
-      {/* Documents List */}
-      <div className="card">
-        <h2 style={{ marginBottom: '20px' }}>📄 Your Documents</h2>
-        <DocumentList key={refreshList} />
+        {/* Documents List */}
+        <div className="card">
+          <h2 style={{ 
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: 'var(--text-primary)'
+          }}>
+            📄 Your Documents
+          </h2>
+          <DocumentList key={refreshList} />
+        </div>
       </div>
     </div>
   );
