@@ -51,7 +51,7 @@ const DocumentList = () => {
     setShowQuizModal(true);
   };
 
-  const generateQuiz = async (numberOfQuestions, quizTitle, questionType) => {
+  const generateQuiz = async (numberOfQuestions, quizTitle) => {
     try {
       setGeneratingQuiz(selectedDocument.id);
       
@@ -60,18 +60,12 @@ const DocumentList = () => {
           documentId: selectedDocument.id,
           numberOfQuestions: numberOfQuestions,
           quizTitle: quizTitle,
-          questionType: questionType,           // NEW: Question type
-          difficulty: 2,                       // NEW: Default to medium difficulty
-          microbitCompatible: true,
-          useAI: true                         // NEW: Enable AI generation
+          microbitCompatible: true
         }
       });
 
       console.log('Quiz generated successfully:', response.data);
-      
-      // Enhanced success message with question type
-      const questionTypeText = questionType === 'MULTIPLE_CHOICE' ? 'multiple choice' : 'true/false';
-      showToast(`Quiz "${quizTitle}" generated successfully with ${numberOfQuestions} ${questionTypeText} questions using AI!`, 'success');
+      showToast(`Quiz "${quizTitle}" generated successfully with ${numberOfQuestions} questions!`, 'success');
       
       // Trigger refresh of quiz list
       setRefreshTrigger(prev => prev + 1);
