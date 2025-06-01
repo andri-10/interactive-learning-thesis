@@ -1,21 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 
 const QuizGenerationModal = ({ isOpen, onClose, onGenerate, documentTitle }) => {
   const [numberOfQuestions, setNumberOfQuestions] = useState(5);
-  const [quizTitle, setQuizTitle] = useState(`Quiz for ${documentTitle}`);
+  const [quizTitle, setQuizTitle] = useState('');
+  const [questionType, setQuestionType] = useState('MULTIPLE_CHOICE');
   const [loading, setLoading] = useState(false);
+
+  // Update quiz title when document changes
+  useEffect(() => {
+    if (documentTitle) {
+      setQuizTitle(`Quiz for ${documentTitle}`);
+    }
+  }, [documentTitle]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await onGenerate(numberOfQuestions, quizTitle);
+    await onGenerate(numberOfQuestions, quizTitle, questionType);
+    setLoading(false);
+    onClose();
+  };
+
+  const handleClose = () => {
+    // Reset form when closing
+    setNumberOfQuestions(5);
+    setQuestionType('MULTIPLE_CHOICE');
     setLoading(false);
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Generate New Quiz">
+    <Modal isOpen={isOpen} onClose={handleClose} title="🧠 Generate New Quiz with AI">
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
@@ -34,6 +50,68 @@ const QuizGenerationModal = ({ isOpen, onClose, onGenerate, documentTitle }) => 
               fontSize: '16px'
             }}
           />
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
+            Question Type
+          </label>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '12px 16px',
+              border: `2px solid ${questionType === 'MULTIPLE_CHOICE' ? 'var(--primary)' : 'var(--border)'}`,
+              borderRadius: '8px',
+              backgroundColor: questionType === 'MULTIPLE_CHOICE' ? 'var(--primary)' : 'transparent',
+              color: questionType === 'MULTIPLE_CHOICE' ? 'white' : 'var(--text-primary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              flex: 1,
+              textAlign: 'center'
+            }}>
+              <input
+                type="radio"
+                name="questionType"
+                value="MULTIPLE_CHOICE"
+                checked={questionType === 'MULTIPLE_CHOICE'}
+                onChange={(e) => setQuestionType(e.target.value)}
+                style={{ display: 'none' }}
+              />
+              <span>🔤 Multiple Choice</span>
+            </label>
+            
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '12px 16px',
+              border: `2px solid ${questionType === 'TRUE_FALSE' ? 'var(--primary)' : 'var(--border)'}`,
+              borderRadius: '8px',
+              backgroundColor: questionType === 'TRUE_FALSE' ? 'var(--primary)' : 'transparent',
+              color: questionType === 'TRUE_FALSE' ? 'white' : 'var(--text-primary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              flex: 1,
+              textAlign: 'center'
+            }}>
+              <input
+                type="radio"
+                name="questionType"
+                value="TRUE_FALSE"
+                checked={questionType === 'TRUE_FALSE'}
+                onChange={(e) => setQuestionType(e.target.value)}
+                style={{ display: 'none' }}
+              />
+              <span>✓✗ True/False</span>
+            </label>
+          </div>
+          <small style={{ color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+            {questionType === 'MULTIPLE_CHOICE' 
+              ? 'Each question will have 4 answer options' 
+              : 'Each question will have True/False options'}
+          </small>
         </div>
 
         <div style={{ marginBottom: '24px' }}>
@@ -62,7 +140,7 @@ const QuizGenerationModal = ({ isOpen, onClose, onGenerate, documentTitle }) => 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             style={{
               padding: '12px 24px',
               border: '2px solid var(--border)',
@@ -77,9 +155,13 @@ const QuizGenerationModal = ({ isOpen, onClose, onGenerate, documentTitle }) => 
             type="submit"
             disabled={loading}
             className="btn-primary"
-            style={{ opacity: loading ? 0.6 : 1 }}
+            style={{ 
+              opacity: loading ? 0.6 : 1,
+              padding: '12px 24px',
+              fontSize: '16px'
+            }}
           >
-            {loading ? 'Generating...' : 'Generate Quiz'}
+            {loading ? '🧠 Generating...' : '✨ Generate with AI'}
           </button>
         </div>
       </form>

@@ -5,9 +5,12 @@ import com.thesis.interactive_learning.repository.DocumentRepository;
 import com.thesis.interactive_learning.repository.QuestionRepository;
 import com.thesis.interactive_learning.repository.QuizRepository;
 import com.thesis.interactive_learning.repository.StudyCollectionRepository;
+import com.thesis.interactive_learning.service.AIQuizService;
 import com.thesis.interactive_learning.service.DocumentService;
 import com.thesis.interactive_learning.service.QuestionGenerationService;
 import com.thesis.interactive_learning.service.TextAnalysisService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -20,8 +23,11 @@ import java.util.function.BiFunction;
 @Service
 public class QuestionGenerationServiceImpl implements QuestionGenerationService {
 
+    private static final Logger logger = LoggerFactory.getLogger(QuestionGenerationServiceImpl.class);
+
     private final DocumentService documentService;
     private final TextAnalysisService textAnalysisService;
+    private final AIQuizService aiQuizService;
     private final QuizRepository quizRepository;
     private final QuestionRepository questionRepository;
     private final DocumentRepository documentRepository;
@@ -32,12 +38,14 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
     @Autowired
     public QuestionGenerationServiceImpl(DocumentService documentService,
                                          TextAnalysisService textAnalysisService,
+                                         AIQuizService aiQuizService,
                                          QuizRepository quizRepository,
                                          QuestionRepository questionRepository,
                                          DocumentRepository documentRepository,
                                          StudyCollectionRepository studyCollectionRepository) {
         this.documentService = documentService;
         this.textAnalysisService = textAnalysisService;
+        this.aiQuizService = aiQuizService;
         this.quizRepository = quizRepository;
         this.questionRepository = questionRepository;
         this.documentRepository = documentRepository;
@@ -45,7 +53,9 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
     }
 
     @Override
-    public Quiz generateQuizFromDocument(Long documentId, int numberOfQuestions, String quizTitle, Long collectionId, boolean microbitCompatible) throws IOException {
+    public Quiz generateQuizFromDocument(Long documentId, int numberOfQuestions, String quizTitle,
+                                         String questionType, int difficulty, Long collectionId,
+                                         boolean microbitCompatible, boolean useAI) throws IOException {
 
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new RuntimeException("Document not found"));
@@ -59,7 +69,8 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         Map<String, Object> structuredText = documentService.extractStructuredTextFromPdf(documentId);
         String fullText = (String) structuredText.get("fullText");
 
-        List<Question> questions = generateQuestionsFromText(fullText, numberOfQuestions, microbitCompatible);
+        List<Question> questions = generateQuestionsFromText(fullText, numberOfQuestions, questionType,
+                difficulty, microbitCompatible, useAI);
 
         Quiz quiz = new Quiz();
         quiz.setTitle(quizTitle);
@@ -75,33 +86,69 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
             questionRepository.save(question);
         }
 
+        logger.info("Generated quiz '{}' with {} {} questions using {}",
+                quizTitle, questions.size(), questionType, useAI ? "AI" : "basic generation");
+
         return savedQuiz;
     }
 
     @Override
-    public List<Question> generateQuestionsFromText(String text, int numberOfQuestions, boolean microbitCompatible) {
-        List<Question> questions = new ArrayList<>();
+    public List<Question> generateQuestionsFromText(String text, int numberOfQuestions, String questionType,
+                                                    int difficulty, boolean microbitCompatible, boolean useAI) {
 
+        if (useAI) {
+            try {
+                logger.info("Generating {} {} questions with AI (difficulty: {})",
+                        numberOfQuestions, questionType, difficulty);
+
+                List<Question> aiQuestions = aiQuizService.generateAIQuestions(text, numberOfQuestions,
+                        questionType, difficulty, microbitCompatible);
+
+                if (aiQuestions != null && !aiQuestions.isEmpty()) {
+                    logger.info("Successfully generated {} AI questions", aiQuestions.size());
+                    return aiQuestions;
+                } else {
+                    logger.warn("AI returned empty question list, falling back to basic generation");
+                }
+            } catch (Exception e) {
+                logger.error("AI question generation failed: {}", e.getMessage(), e);
+                logger.info("Falling back to basic question generation");
+            }
+        }
+
+        // Fallback to basic generation or when AI is disabled
+        return generateBasicQuestions(text, numberOfQuestions, questionType, microbitCompatible);
+    }
+
+    /**
+     * Basic question generation (original logic) as fallback
+     */
+    private List<Question> generateBasicQuestions(String text, int numberOfQuestions, String questionType, boolean microbitCompatible) {
+        logger.info("Using basic question generation for {} questions of type {}", numberOfQuestions, questionType);
+
+        List<Question> questions = new ArrayList<>();
         List<String> sentences = textAnalysisService.extractSentences(text);
         Map<String, Double> keyTerms = textAnalysisService.extractKeyTerms(text, 30);
-        Map<String, String> definitions = textAnalysisService.extractDefinitions(text);
 
-        if (microbitCompatible) {
-            // For Micro:bit compatible quizzes, focus on multiple choice with 4 options
-            // and true/false questions
-            addMultipleChoiceQuestions(questions, sentences, keyTerms,
-                    Math.min(sentences.size(), numberOfQuestions * 2/3));
-
-            // Add true/false questions
-            addTrueFalseQuestions(questions, sentences,
-                    Math.min(sentences.size(), numberOfQuestions - questions.size()));
+        if ("MULTIPLE_CHOICE".equals(questionType)) {
+            addMultipleChoiceQuestions(questions, sentences, keyTerms, numberOfQuestions);
+        } else if ("TRUE_FALSE".equals(questionType)) {
+            addTrueFalseQuestions(questions, sentences, numberOfQuestions, text);
         } else {
-            // For regular quizzes, use a mix of all question types
-            addDefinitionQuestions(questions, definitions, Math.min(definitions.size(), numberOfQuestions / 3));
-            addFactualQuestions(questions, sentences, keyTerms,
-                    Math.min(sentences.size(), numberOfQuestions / 3));
-            addTrueFalseQuestions(questions, sentences,
-                    Math.min(sentences.size(), numberOfQuestions - questions.size()));
+            // Mixed type (legacy behavior)
+            if (microbitCompatible) {
+                addMultipleChoiceQuestions(questions, sentences, keyTerms,
+                        Math.min(sentences.size(), numberOfQuestions * 2/3));
+                addTrueFalseQuestions(questions, sentences,
+                        Math.min(sentences.size(), numberOfQuestions - questions.size()), text);
+            } else {
+                Map<String, String> definitions = textAnalysisService.extractDefinitions(text);
+                addDefinitionQuestions(questions, definitions, Math.min(definitions.size(), numberOfQuestions / 3));
+                addFactualQuestions(questions, sentences, keyTerms,
+                        Math.min(sentences.size(), numberOfQuestions / 3));
+                addTrueFalseQuestions(questions, sentences,
+                        Math.min(sentences.size(), numberOfQuestions - questions.size()), text);
+            }
         }
 
         Collections.shuffle(questions);
@@ -113,7 +160,78 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         return questions;
     }
 
-    // Helper method to find a key term in a sentence
+    // Legacy methods for backward compatibility
+    @Override
+    @Deprecated
+    public Quiz generateQuizFromDocument(Long documentId, int numberOfQuestions, String quizTitle,
+                                         Long collectionId, boolean microbitCompatible) throws IOException {
+        // Use default values for new parameters
+        return generateQuizFromDocument(documentId, numberOfQuestions, quizTitle,
+                "MULTIPLE_CHOICE", 2, collectionId, microbitCompatible, false);
+    }
+
+    @Override
+    @Deprecated
+    public List<Question> generateQuestionsFromText(String text, int numberOfQuestions, boolean microbitCompatible) {
+        // Use default values for new parameters
+        return generateQuestionsFromText(text, numberOfQuestions, "MULTIPLE_CHOICE", 2, microbitCompatible, false);
+    }
+
+    // Language-aware True/False options
+    private List<String> getTrueFalseOptions(String documentText) {
+        String docLowerCase = documentText.toLowerCase();
+
+        // Albanian detection
+        if (docLowerCase.contains(" është ") || docLowerCase.contains(" janë ") ||
+                docLowerCase.contains(" dhe ") || docLowerCase.contains(" në ") ||
+                docLowerCase.contains(" për ") || docLowerCase.contains(" nga ") ||
+                docLowerCase.contains(" që ") || docLowerCase.contains(" me ") ||
+                docLowerCase.contains("shqip") || docLowerCase.contains("shqiptar")) {
+            return Arrays.asList("E vërtetë", "E gabuar");
+        }
+
+        // Default to English
+        return Arrays.asList("True", "False");
+    }
+
+    // Updated helper methods with language support
+    private void addTrueFalseQuestions(List<Question> questions, List<String> sentences, int count, String documentText) {
+        List<String> sentenceList = new ArrayList<>(sentences);
+        Collections.shuffle(sentenceList);
+
+        List<String> trueFalseOptions = getTrueFalseOptions(documentText);
+
+        int added = 0;
+        for (String sentence : sentenceList) {
+            if (added >= count) break;
+            if (sentence.length() < 30) continue;
+
+            Question question = new Question();
+            boolean isTrue = random.nextBoolean();
+
+            String prefix = trueFalseOptions.get(0).equals("E vërtetë") ? "E vërtetë apo e gabuar: " : "True or False: ";
+
+            if (isTrue) {
+                question.setQuestionText(prefix + sentence);
+            } else {
+                String negatedSentence = negateSentence(sentence);
+                question.setQuestionText(prefix + negatedSentence);
+            }
+
+            question.setQuestionType("TRUE_FALSE");
+            question.setOptions(trueFalseOptions);
+            question.setCorrectOptionIndex(isTrue ? 0 : 1);
+            question.setExplanation("The statement is " + (isTrue ? "true" : "false") +
+                    " according to the text: " + sentence);
+            question.setDifficultyLevel(1);
+            question.setSourceText(sentence);
+
+            questions.add(question);
+            added++;
+        }
+    }
+
+    // All the existing helper methods remain the same...
     private String findKeyTermInSentence(String sentence, List<String> keyTerms) {
         for (String term : keyTerms) {
             if (sentence.toLowerCase().contains(term.toLowerCase())) {
@@ -123,9 +241,7 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         return null;
     }
 
-    // Helper method to generate options for multiple choice questions
     private List<String> generateOptions(String correctAnswer, List<String> possibleDistractors, int optionCount) {
-
         List<String> options = new ArrayList<>();
         options.add(correctAnswer);
 
@@ -145,7 +261,6 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         return options;
     }
 
-    // Process sentences and create questions using the provided question generator function
     private List<Question> processKeyTermSentences(List<String> sentences, List<String> keyTerms, int count, int minLength, BiFunction<String, String, Question> questionGenerator) {
         List<Question> result = new ArrayList<>();
         List<String> sentenceList = new ArrayList<>(sentences);
@@ -154,7 +269,6 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         int added = 0;
         for (String sentence : sentenceList) {
             if (added >= count) break;
-
             if (sentence.length() < minLength) continue;
 
             String foundTerm = findKeyTermInSentence(sentence, keyTerms);
@@ -177,7 +291,6 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
                 (sentence, term) -> {
                     Question question = new Question();
 
-                    // Create question text
                     if (sentence.toLowerCase().contains(term.toLowerCase())) {
                         String blankSentence = sentence.replaceAll("(?i)" + Pattern.quote(term), "________");
                         question.setQuestionText("Fill in the blank: " + blankSentence);
@@ -185,7 +298,6 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
                         question.setQuestionText("Which term is most related to this statement: \"" + sentence + "\"?");
                     }
 
-                    // Generate options
                     List<String> options = generateOptions(term, keyTermList, 4);
 
                     question.setQuestionType("MULTIPLE_CHOICE");
@@ -200,43 +312,6 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         );
 
         questions.addAll(generatedQuestions);
-    }
-
-    private void addTrueFalseQuestions(List<Question> questions, List<String> sentences, int count) {
-        List<String> sentenceList = new ArrayList<>(sentences);
-        Collections.shuffle(sentenceList);
-
-        int added = 0;
-        for (String sentence : sentenceList) {
-            if (added >= count) break;
-
-            if (sentence.length() < 30) continue;
-
-            Question question = new Question();
-
-            boolean isTrue = random.nextBoolean();
-
-            if (isTrue) {
-                question.setQuestionText("True or False: " + sentence);
-            } else {
-                String negatedSentence = negateSentence(sentence);
-                question.setQuestionText("True or False: " + negatedSentence);
-            }
-
-            question.setQuestionType("TRUE_FALSE");
-
-            List<String> options = Arrays.asList("True", "False");
-
-            question.setOptions(options);
-            question.setCorrectOptionIndex(isTrue ? 0 : 1);
-            question.setExplanation("The statement is " + (isTrue ? "true" : "false") +
-                    " according to the text: " + sentence);
-            question.setDifficultyLevel(1);
-            question.setSourceText(sentence);
-
-            questions.add(question);
-            added++;
-        }
     }
 
     private void addDefinitionQuestions(List<Question> questions, Map<String, String> definitions, int count) {
@@ -266,8 +341,7 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         }
     }
 
-    private void addFactualQuestions(List<Question> questions, List<String> sentences,Map<String, Double> keyTerms, int count) {
-
+    private void addFactualQuestions(List<Question> questions, List<String> sentences, Map<String, Double> keyTerms, int count) {
         List<String> keyTermList = new ArrayList<>(keyTerms.keySet());
 
         List<Question> generatedQuestions = processKeyTermSentences(
@@ -294,9 +368,7 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
         questions.addAll(generatedQuestions);
     }
 
-    // Simple method to negate a sentence
     private String negateSentence(String sentence) {
-
         String[] negationPatterns = {
                 "is", "was", "are", "were", "has", "have", "had",
                 "can", "could", "will", "would", "should", "may", "might"
@@ -307,7 +379,7 @@ public class QuestionGenerationServiceImpl implements QuestionGenerationService 
                 return sentence.replace(" " + pattern + " ", " " + pattern + " not ");
             }
         }
-        // If no pattern matches, add "not" after the first space
+
         int firstSpace = sentence.indexOf(" ");
         if (firstSpace > 0) {
             return sentence.substring(0, firstSpace + 1) + "not " +
