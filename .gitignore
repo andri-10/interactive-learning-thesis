@@ -1,23 +1,7 @@
-# 🔐 Secret files
-application-secrets.properties
+# 🔐 Secrets
+backend/interactive-learning-back/src/main/resources/application-secrets.properties
 .env
 
 # 💥 Build files
-/target/
-/build/
-
-# 🧠 IDE settings
-.idea/
-*.iml
-*.vscode/
-
-# 💻 OS-specific files
-.DS_Store
-Thumbs.db
-
-# 🗑 Node modules (if using React or similar)
-frontend/node_modules/
-
-# 💅 Dependency locks (optional)
-package-lock.json
-yarn.lock
+target/
+build/
