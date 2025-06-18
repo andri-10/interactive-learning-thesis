@@ -178,10 +178,11 @@ public class MicrobitController {
         if ("MULTIPLE_CHOICE".equals(questionType)) {
             int selectedOption;
             switch (movement) {
-                case FORWARD: selectedOption = 0; break;
-                case RIGHT: selectedOption = 1; break;
-                case BACKWARD: selectedOption = 2; break;
-                case LEFT: selectedOption = 3; break;
+                // Map movements to options according to our Micro:bit configuration
+                case LEFT: selectedOption = 0; break;      // A
+                case FORWARD: selectedOption = 1; break;   // B
+                case RIGHT: selectedOption = 2; break;     // C
+                case BACKWARD: selectedOption = 3; break;  // D
                 default: return;
             }
 
@@ -190,8 +191,8 @@ public class MicrobitController {
             // Map LEFT to TRUE, RIGHT to FALSE
             boolean selectedAnswer;
             switch (movement) {
-                case LEFT: selectedAnswer = true; break;
-                case RIGHT: selectedAnswer = false; break;
+                case LEFT: selectedAnswer = true; break;     // TRUE
+                case RIGHT: selectedAnswer = false; break;   // FALSE
                 default: return;
             }
 

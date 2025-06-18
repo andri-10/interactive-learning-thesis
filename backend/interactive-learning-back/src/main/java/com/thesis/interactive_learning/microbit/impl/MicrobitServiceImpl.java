@@ -30,6 +30,12 @@ public class MicrobitServiceImpl implements MicrobitService {
 
     @Override
     public boolean initializeConnection() {
+        // Close any existing connection
+        if (connected && serialPort != null) {
+            serialPort.closePort();
+            connected = false;
+        }
+
         SerialPort[] ports = SerialPort.getCommPorts();
 
         if (ports.length == 0) {
@@ -43,11 +49,16 @@ public class MicrobitServiceImpl implements MicrobitService {
         }
 
         // Try to find the Micro:bit device
-        // Note: You might need to adjust this logic based on how your Micro:bit appears
         for (SerialPort port : ports) {
-            if (port.getDescriptivePortName().toLowerCase().contains("micro:bit") ||
-                    port.getDescriptivePortName().toLowerCase().contains("mbed")) {
+            String portName = port.getDescriptivePortName().toLowerCase();
+            String systemName = port.getSystemPortName().toLowerCase();
+
+            if (portName.contains("micro:bit") ||
+                    portName.contains("microbit") ||
+                    portName.contains("mbed") ||
+                    systemName.contains("usbmodem")) {
                 serialPort = port;
+                logger.info("Found potential Micro:bit device: " + port.getSystemPortName());
                 break;
             }
         }
@@ -72,6 +83,18 @@ public class MicrobitServiceImpl implements MicrobitService {
             logger.error("Failed to open serial port: " + serialPort.getSystemPortName());
         } else {
             logger.info("Connected to: " + serialPort.getSystemPortName());
+
+            // Flush any initial data
+            try {
+                Thread.sleep(500);
+                InputStream in = serialPort.getInputStream();
+                byte[] buffer = new byte[1024];
+                while (in.available() > 0) {
+                    in.read(buffer);
+                }
+            } catch (Exception e) {
+                logger.warn("Error flushing initial data: " + e.getMessage());
+            }
         }
 
         return connected;
@@ -109,7 +132,10 @@ public class MicrobitServiceImpl implements MicrobitService {
                             if (c == '\n') {
                                 // Process the complete message
                                 String message = messageBuffer.toString().trim();
-                                processMessage(message, movementCallback, buttonCallback);
+                                if (!message.isEmpty()) {
+                                    logger.debug("Received message: {}", message);
+                                    processMessage(message, movementCallback, buttonCallback);
+                                }
                                 messageBuffer = new StringBuilder();
                             } else {
                                 messageBuffer.append(c);
@@ -139,43 +165,56 @@ public class MicrobitServiceImpl implements MicrobitService {
      */
     private void processMessage(String message, Consumer<MovementType> movementCallback,
                                 Consumer<ButtonType> buttonCallback) {
-        logger.debug("Received message: " + message);
 
-        String upperCase = message.substring(2).trim().toUpperCase();
+        if (message.length() < 3 || !message.contains(":")) {
+            logger.warn("Invalid message format: {}", message);
+            return;
+        }
 
-        if (message.startsWith("M:")) {
-            // Movement message
-            MovementType movement;
+        try {
+            String type = message.substring(0, 1);
+            String value = message.substring(2).trim().toUpperCase();
 
-            try {
-                movement = MovementType.valueOf(upperCase);
-            } catch (IllegalArgumentException e) {
-                logger.warn("Unknown movement type: " + upperCase);
-                return;
+            logger.info("Processing message: Type={}, Value={}", type, value);
+
+            if ("M".equals(type)) {
+                // Movement message
+                MovementType movement;
+
+                try {
+                    movement = MovementType.valueOf(value);
+                    logger.info("Detected movement: {}", movement);
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Unknown movement type: {}", value);
+                    return;
+                }
+
+                lastMovement = movement;
+
+                if (movementCallback != null) {
+                    movementCallback.accept(movement);
+                }
+            } else if ("B".equals(type)) {
+                ButtonType button;
+
+                try {
+                    button = ButtonType.valueOf(value);
+                    logger.info("Detected button press: {}", button);
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Unknown button type: {}", value);
+                    return;
+                }
+
+                lastButton = button;
+
+                if (buttonCallback != null) {
+                    buttonCallback.accept(button);
+                }
+            } else {
+                logger.warn("Unknown message type: {}", type);
             }
-
-            lastMovement = movement;
-
-            if (movementCallback != null) {
-                movementCallback.accept(movement);
-            }
-        } else if (message.startsWith("B:")) {
-            ButtonType button;
-
-            try {
-                button = ButtonType.valueOf(upperCase);
-            } catch (IllegalArgumentException e) {
-                logger.warn("Unknown button type: {}", upperCase);
-                return;
-            }
-
-            lastButton = button;
-
-            if (buttonCallback != null) {
-                buttonCallback.accept(button);
-            }
-        } else {
-            logger.warn("Unknown message format: " + message);
+        } catch (Exception e) {
+            logger.error("Error processing message: {}", message, e);
         }
     }
 
