@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import Navigation from '../components/common/Navigation';
+import MicrobitStatus from '../components/microbit/MicrobitStatus';
 
 const Dashboard = () => {
   return (
@@ -28,6 +29,9 @@ const Dashboard = () => {
               Manage your documents, collections, and quizzes from here
             </p>
           </div>
+
+          {/* Micro:bit Status Component */}
+          <MicrobitStatus />
           
           {/* Quick Actions - Fixed sizing */}
           <div style={{ 
@@ -117,7 +121,7 @@ const Dashboard = () => {
                 style={{ 
                   padding: '30px', 
                   textAlign: 'center',
-                  border: '2px solid var(--accent)', // Changed from var(--accent) to var(--success)
+                  border: '2px solid var(--accent)',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                   height: '200px',

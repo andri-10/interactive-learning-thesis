@@ -1,8 +1,18 @@
-// frontend/interactive-learning-front/src/hooks/useMicrobitWebSocket.js
-import { useState, useEffect, useCallback } from 'react';
+// frontend/interactive-learning-front/src/context/MicrobitContext.js
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import microbitWebSocketService from '../services/microbitWebSocket';
 
-export const useMicrobitWebSocket = () => {
+const MicrobitContext = createContext();
+
+export const useMicrobit = () => {
+  const context = useContext(MicrobitContext);
+  if (!context) {
+    throw new Error('useMicrobit must be used within a MicrobitProvider');
+  }
+  return context;
+};
+
+export const MicrobitProvider = ({ children }) => {
   const [connectionState, setConnectionState] = useState({
     connected: false,
     reconnectAttempts: 0,
@@ -38,8 +48,11 @@ export const useMicrobitWebSocket = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    console.log('🔌 Initializing global WebSocket connection...');
+    
     // Set up event listeners
     const handleConnection = (data) => {
+      console.log('🔌 WebSocket connection state:', data.connected);
       setConnectionState({
         connected: data.connected,
         reconnectAttempts: microbitWebSocketService.reconnectAttempts,
@@ -54,23 +67,28 @@ export const useMicrobitWebSocket = () => {
     };
 
     const handleMicrobitStatus = (data) => {
+      console.log('🎮 Micro:bit status update:', data);
       setMicrobitStatus(data);
       setError(null);
     };
 
     const handleMovement = (data) => {
+      console.log('🏃 Movement detected:', data.movement);
       setLastMovement(data);
     };
 
     const handleButton = (data) => {
+      console.log('🔘 Button pressed:', data.button);
       setLastButton(data);
     };
 
     const handleQuizState = (data) => {
+      console.log('🧠 Quiz state:', data);
       setQuizState(data);
     };
 
     const handleError = (data) => {
+      console.log('❌ WebSocket error:', data.error);
       setError(data.error);
     };
 
@@ -82,33 +100,47 @@ export const useMicrobitWebSocket = () => {
     microbitWebSocketService.on('quiz_state', handleQuizState);
     microbitWebSocketService.on('error', handleError);
 
-    // REMOVED: microbitWebSocketService.connect(); 
-    // Connection is now handled globally in App.js
+    // Connect to WebSocket globally
+    microbitWebSocketService.connect();
 
     // Cleanup on unmount
     return () => {
+      console.log('🔌 Cleaning up WebSocket connection...');
       microbitWebSocketService.off('connection', handleConnection);
       microbitWebSocketService.off('microbit_status', handleMicrobitStatus);
       microbitWebSocketService.off('microbit_movement', handleMovement);
       microbitWebSocketService.off('microbit_button', handleButton);
       microbitWebSocketService.off('quiz_state', handleQuizState);
       microbitWebSocketService.off('error', handleError);
+      microbitWebSocketService.disconnect();
     };
   }, []);
 
-  const connect = useCallback(() => {
-    microbitWebSocketService.connect();
-  }, []);
+  const connectMicrobit = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/microbit/connect', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const data = await response.json();
+      console.log('🎮 Micro:bit connect response:', data);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Error connecting micro:bit:', error);
+      throw error;
+    }
+  };
 
-  const disconnect = useCallback(() => {
-    microbitWebSocketService.disconnect();
-  }, []);
-
-  const clearError = useCallback(() => {
+  const clearError = () => {
     setError(null);
-  }, []);
+  };
 
-  return {
+  const value = {
     // Connection state
     connectionState,
     isWebSocketConnected: connectionState.connected,
@@ -128,13 +160,13 @@ export const useMicrobitWebSocket = () => {
     error,
     clearError,
     
-    // Connection control
-    connect,
-    disconnect,
-    
-    // Utility
-    getConnectionInfo: () => microbitWebSocketService.getConnectionState()
+    // Actions
+    connectMicrobit,
   };
-};
 
-export default useMicrobitWebSocket;
+  return (
+    <MicrobitContext.Provider value={value}>
+      {children}
+    </MicrobitContext.Provider>
+  );
+};

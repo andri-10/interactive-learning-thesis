@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import microbitWebSocketService from './services/microbitWebSocket'; // ADD THIS
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +10,7 @@ import Collections from './pages/Collections';
 import QuizTaking from './pages/QuizTaking';
 import QuizResults from './pages/QuizResults';
 import Quizzes from './pages/Quizzes';
+import { MicrobitProvider } from './context/MicrobitContext';
 import './styles/globals.css';
 
 // Protected Route component
@@ -17,86 +19,99 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
-// Auth Route component (redirect to dashboard if already logged in)
+// Auth Route component
 const AuthRoute = ({ children }) => {
   const { user } = useAuth();
   return user ? <Navigate to="/dashboard" /> : children;
 };
 
 function App() {
+  // Initialize WebSocket connection globally
+  useEffect(() => {
+    console.log('Initializing global WebSocket connection...');
+    microbitWebSocketService.connect();
+    
+    // Cleanup on app unmount
+    return () => {
+      microbitWebSocketService.disconnect();
+    };
+  }, []);
+
   return (
     <AuthProvider>
-      <Router>
-        <div className="App">
-          <Routes>
-            <Route path="/" element={<Navigate to="/login" />} />
-            <Route 
-              path="/login" 
-              element={
-                <AuthRoute>
-                  <LoginForm />
-                </AuthRoute>
-              } 
-            />
-            <Route 
-              path="/register" 
-              element={
-                <AuthRoute>
-                  <RegisterForm />
-                </AuthRoute>
-              } 
-            />
-            <Route 
-              path="/dashboard" 
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/documents" 
-              element={
-                <ProtectedRoute>
-                  <Documents />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/collections" 
-              element={
-                <ProtectedRoute>
-                  <Collections />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/quiz/:quizId" 
-              element={
-                <ProtectedRoute>
-                  <QuizTaking />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/quiz-results" 
-              element={
-                <ProtectedRoute>
-                  <QuizResults />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/quizzes" 
-              element={
-                <ProtectedRoute>
-                  <Quizzes />
-                </ProtectedRoute>
-              } 
-            />
-          </Routes>
-        </div>
-      </Router>
+      <MicrobitProvider>
+        <Router>
+          <div className="App">
+            <Routes>
+              <Route path="/" element={<Navigate to="/login" />} />
+              <Route 
+                path="/login" 
+                element={
+                  <AuthRoute>
+                    <LoginForm />
+                  </AuthRoute>
+                } 
+              />
+              <Route 
+                path="/register" 
+                element={
+                  <AuthRoute>
+                    <RegisterForm />
+                  </AuthRoute>
+                } 
+              />
+              <Route 
+                path="/dashboard" 
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/documents" 
+                element={
+                  <ProtectedRoute>
+                    <Documents />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/collections" 
+                element={
+                  <ProtectedRoute>
+                    <Collections />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/quiz/:quizId" 
+                element={
+                  <ProtectedRoute>
+                    <QuizTaking />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/quiz-results" 
+                element={
+                  <ProtectedRoute>
+                    <QuizResults />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/quizzes" 
+                element={
+                  <ProtectedRoute>
+                    <Quizzes />
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </div>
+        </Router>
+      </MicrobitProvider>
     </AuthProvider>
   );
 }

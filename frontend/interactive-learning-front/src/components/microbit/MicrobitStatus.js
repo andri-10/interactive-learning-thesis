@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
-import useMicrobitWebSocket from '../../hooks/useMicrobitWebSocket';
+import { useMicrobit } from '../../context/MicrobitContext'; 
 import api from '../../services/api';
 
-const MicrobitStatus = ({ showDetailed = false, onConnect = null }) => {
+const MicrobitStatus = ({ showDetailed = false }) => { // ADD DEFAULT PROP
   const {
-    connectionState,
     isWebSocketConnected,
-    microbitStatus,
     isMicrobitConnected,
+    microbitStatus,
     lastMovement,
     lastButton,
+    connectionState, // ADD THIS
     error,
-    clearError
-  } = useMicrobitWebSocket();
+    clearError,
+    connectMicrobit
+  } = useMicrobit();
 
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState(null);
@@ -22,19 +23,14 @@ const MicrobitStatus = ({ showDetailed = false, onConnect = null }) => {
     setConnectError(null);
     
     try {
-      const response = await api.post('/microbit/connect');
+      const response = await connectMicrobit(); // Use context method
       
-      if (response.data.connected) {
-        console.log('Micro:bit connected successfully');
-        if (onConnect) {
-          onConnect(true);
-        }
-      } else {
-        setConnectError(response.data.message || 'Failed to connect');
+      if (!response.connected) {
+        setConnectError(response.message || 'Failed to connect');
       }
     } catch (error) {
       console.error('Error connecting to micro:bit:', error);
-      setConnectError(error.response?.data?.message || 'Connection failed');
+      setConnectError('Connection failed');
     } finally {
       setConnecting(false);
     }
@@ -44,9 +40,6 @@ const MicrobitStatus = ({ showDetailed = false, onConnect = null }) => {
     try {
       await api.post('/microbit/disconnect');
       console.log('Micro:bit disconnected');
-      if (onConnect) {
-        onConnect(false);
-      }
     } catch (error) {
       console.error('Error disconnecting micro:bit:', error);
     }
