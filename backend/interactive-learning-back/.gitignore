@@ -32,6 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
-
-### Secrets
-!**/src/main/resources/application-secrets.properties
+### Secrets - IGNORE these files
+**/src/main/resources/application-secrets.properties
+*.env
+.env
+.env.local
+.env.production

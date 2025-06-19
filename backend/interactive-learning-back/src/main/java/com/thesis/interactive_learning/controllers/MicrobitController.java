@@ -3,6 +3,7 @@ package com.thesis.interactive_learning.controllers;
 import com.thesis.interactive_learning.microbit.ButtonType;
 import com.thesis.interactive_learning.microbit.MicrobitService;
 import com.thesis.interactive_learning.microbit.MovementType;
+import com.thesis.interactive_learning.microbit.impl.MicrobitServiceImpl;
 import com.thesis.interactive_learning.model.Question;
 import com.thesis.interactive_learning.model.Quiz;
 import com.thesis.interactive_learning.model.User;
@@ -20,7 +21,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/microbit")
@@ -39,18 +39,38 @@ public class MicrobitController {
     public ResponseEntity<?> connectMicrobit() {
         boolean connected = microbitService.initializeConnection();
 
-        if (connected) {
-            return ResponseEntity.ok().body(Map.of("status", "connected"));
-        } else {
-            return ResponseEntity.badRequest().body(Map.of("status", "failed",
-                    "message", "Could not connect to Micro:bit"));
+        Map<String, Object> response = new HashMap<>();
+        response.put("connected", connected);
+
+        if (microbitService instanceof MicrobitServiceImpl) {
+            response.put("activeWebSocketSessions", ((MicrobitServiceImpl) microbitService).getActiveWebSocketSessions());
         }
+
+        if (connected) {
+            response.put("status", "connected");
+            response.put("message", "Micro:bit connected successfully");
+        } else {
+            response.put("status", "failed");
+            response.put("message", "Could not connect to Micro:bit");
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/status")
     public ResponseEntity<?> getMicrobitStatus() {
         boolean connected = microbitService.isConnected();
-        return ResponseEntity.ok().body(Map.of("connected", connected));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("connected", connected);
+        response.put("lastMovement", microbitService.getLastMovement().toString());
+        response.put("lastButton", microbitService.getLastButton().toString());
+
+        if (microbitService instanceof MicrobitServiceImpl) {
+            response.put("activeWebSocketSessions", ((MicrobitServiceImpl) microbitService).getActiveWebSocketSessions());
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/quiz/{quizId}/start")
@@ -73,12 +93,38 @@ public class MicrobitController {
         ActiveQuizSession session = new ActiveQuizSession(quiz, userId);
         activeSessions.put(quizId, session);
 
+        // Set quiz context for WebSocket broadcasting
+        if (microbitService instanceof MicrobitServiceImpl) {
+            MicrobitServiceImpl impl = (MicrobitServiceImpl) microbitService;
+            impl.setQuizContext("Quiz: " + quiz.getTitle());
+            impl.broadcastQuizState(quizId, "started",
+                    session.getCurrentQuestion() != null ? session.getCurrentQuestion().getQuestionText() : "Loading...");
+        }
+
         // Start listening for Micro:bit inputs
         microbitService.startListening(
                 // Movement handler
-                movement -> handleMovement(session, movement),
+                movement -> {
+                    handleMovement(session, movement);
+                    // Broadcast question change if applicable
+                    if (microbitService instanceof MicrobitServiceImpl) {
+                        Question currentQ = session.getCurrentQuestion();
+                        if (currentQ != null) {
+                            ((MicrobitServiceImpl) microbitService).broadcastQuizState(quizId, "question_changed", currentQ.getQuestionText());
+                        }
+                    }
+                },
                 // Button handler
-                button -> handleButton(session, button)
+                button -> {
+                    handleButton(session, button);
+                    // Broadcast question change if applicable
+                    if (microbitService instanceof MicrobitServiceImpl) {
+                        Question currentQ = session.getCurrentQuestion();
+                        if (currentQ != null) {
+                            ((MicrobitServiceImpl) microbitService).broadcastQuizState(quizId, "navigation", currentQ.getQuestionText());
+                        }
+                    }
+                }
         );
 
         // Return initial question
@@ -96,6 +142,13 @@ public class MicrobitController {
         // Stop listening
         microbitService.stopListening();
 
+        // Broadcast quiz completion
+        if (microbitService instanceof MicrobitServiceImpl) {
+            MicrobitServiceImpl impl = (MicrobitServiceImpl) microbitService;
+            impl.broadcastQuizState(quizId, "completed",
+                    "Quiz finished with " + session.getCorrectAnswers() + "/" + session.getTotalQuestions() + " correct");
+        }
+
         User user = userRepository.findById(session.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -112,6 +165,11 @@ public class MicrobitController {
 
         // Remove the session
         activeSessions.remove(quizId);
+
+        // Clear quiz context
+        if (microbitService instanceof MicrobitServiceImpl) {
+            ((MicrobitServiceImpl) microbitService).setQuizContext(null);
+        }
 
         return ResponseEntity.ok(Map.of(
                 "quizId", quizId,
@@ -132,6 +190,44 @@ public class MicrobitController {
         return ResponseEntity.ok(getCurrentQuestionResponse(session));
     }
 
+    @GetMapping("/websocket/info")
+    public ResponseEntity<?> getWebSocketInfo() {
+        Map<String, Object> info = new HashMap<>();
+        info.put("websocketUrl", "ws://localhost:8080/ws/microbit");
+        info.put("sockjsUrl", "http://localhost:8080/ws/microbit");
+        info.put("microbitConnected", microbitService.isConnected());
+
+        if (microbitService instanceof MicrobitServiceImpl) {
+            info.put("activeConnections", ((MicrobitServiceImpl) microbitService).getActiveWebSocketSessions());
+        } else {
+            info.put("activeConnections", 0);
+        }
+
+        return ResponseEntity.ok(info);
+    }
+
+    @PostMapping("/disconnect")
+    public ResponseEntity<?> disconnectMicrobit() {
+        // Stop any active listening
+        microbitService.stopListening();
+
+        // Clear all active sessions
+        activeSessions.clear();
+
+        // Broadcast disconnection if possible
+        if (microbitService instanceof MicrobitServiceImpl) {
+            MicrobitServiceImpl impl = (MicrobitServiceImpl) microbitService;
+            impl.setQuizContext(null);
+            impl.broadcastConnectionStatus(false, null, "Manual disconnection");
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "status", "disconnected",
+                "message", "Micro:bit disconnected successfully"
+        ));
+    }
+
+    // Helper method to get current question response
     private Map<String, Object> getCurrentQuestionResponse(ActiveQuizSession session) {
         Question currentQuestion = session.getCurrentQuestion();
 
@@ -157,6 +253,7 @@ public class MicrobitController {
         );
     }
 
+    // Helper method to handle movement input
     private void handleMovement(ActiveQuizSession session, MovementType movement) {
         if (movement == MovementType.NONE) {
             return;
@@ -206,6 +303,7 @@ public class MicrobitController {
         session.moveToNextQuestion();
     }
 
+    // Helper method to handle button input
     private void handleButton(ActiveQuizSession session, ButtonType button) {
         if (button == ButtonType.NONE) {
             return;

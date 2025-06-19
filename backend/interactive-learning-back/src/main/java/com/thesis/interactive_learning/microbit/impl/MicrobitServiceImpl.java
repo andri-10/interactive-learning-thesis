@@ -1,13 +1,16 @@
 package com.thesis.interactive_learning.microbit.impl;
 
 import com.fazecast.jSerialComm.SerialPort;
+import com.thesis.interactive_learning.config.MicrobitWebSocketHandler;
 import com.thesis.interactive_learning.microbit.ButtonType;
 import com.thesis.interactive_learning.microbit.MicrobitService;
 import com.thesis.interactive_learning.microbit.MovementType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.function.Consumer;
@@ -16,12 +19,17 @@ import java.util.function.Consumer;
 public class MicrobitServiceImpl implements MicrobitService {
 
     private static final Logger logger = LoggerFactory.getLogger(MicrobitServiceImpl.class);
+
+    @Autowired
+    private MicrobitWebSocketHandler webSocketHandler;
+
     private SerialPort serialPort;
     private boolean connected = false;
     private MovementType lastMovement = MovementType.NONE;
     private ButtonType lastButton = ButtonType.NONE;
     private Thread listenerThread;
     private boolean listening = false;
+    private String currentQuizContext = null;
 
     private static final int BAUD_RATE = 115200;
     private static final int DATA_BITS = 8;
@@ -30,16 +38,20 @@ public class MicrobitServiceImpl implements MicrobitService {
 
     @Override
     public boolean initializeConnection() {
+        logger.info("Attempting to initialize micro:bit connection...");
+
         // Close any existing connection
         if (connected && serialPort != null) {
             serialPort.closePort();
             connected = false;
+            broadcastConnectionStatus(false, null, "Previous connection closed");
         }
 
         SerialPort[] ports = SerialPort.getCommPorts();
 
         if (ports.length == 0) {
             logger.error("No serial ports available");
+            broadcastConnectionStatus(false, null, "No serial ports available");
             return false;
         }
 
@@ -67,10 +79,12 @@ public class MicrobitServiceImpl implements MicrobitService {
         if (serialPort == null && ports.length > 0) {
             logger.warn("No specific Micro:bit device found. Using first available port: {}", ports[0].getSystemPortName());
             serialPort = ports[0];
+            broadcastConnectionStatus(false, null, "Trying first available port: " + ports[0].getSystemPortName());
         }
 
         if (serialPort == null) {
             logger.error("No serial port selected");
+            broadcastConnectionStatus(false, null, "No serial port could be selected");
             return false;
         }
 
@@ -81,8 +95,12 @@ public class MicrobitServiceImpl implements MicrobitService {
         connected = serialPort.openPort();
         if (!connected) {
             logger.error("Failed to open serial port: " + serialPort.getSystemPortName());
+            broadcastConnectionStatus(false, serialPort.getSystemPortName(),
+                    "Failed to open port: " + serialPort.getSystemPortName());
         } else {
             logger.info("Connected to: " + serialPort.getSystemPortName());
+            broadcastConnectionStatus(true, serialPort.getSystemPortName(),
+                    "Successfully connected to micro:bit");
 
             // Flush any initial data
             try {
@@ -104,6 +122,7 @@ public class MicrobitServiceImpl implements MicrobitService {
     public void startListening(Consumer<MovementType> movementCallback, Consumer<ButtonType> buttonCallback) {
         if (!connected || serialPort == null) {
             logger.error("Cannot start listening: not connected");
+            broadcastConnectionStatus(false, null, "Cannot start listening: not connected");
             return;
         }
 
@@ -113,6 +132,7 @@ public class MicrobitServiceImpl implements MicrobitService {
         }
 
         listening = true;
+        logger.info("Starting to listen for micro:bit data...");
 
         // Start a new thread to listen for data
         listenerThread = new Thread(() -> {
@@ -149,6 +169,8 @@ public class MicrobitServiceImpl implements MicrobitService {
             } catch (IOException | InterruptedException e) {
                 logger.error("Error while listening: " + e.getMessage(), e);
                 listening = false;
+                connected = false;
+                broadcastConnectionStatus(false, null, "Connection lost: " + e.getMessage());
             }
         });
 
@@ -191,6 +213,9 @@ public class MicrobitServiceImpl implements MicrobitService {
 
                 lastMovement = movement;
 
+                // Broadcast to WebSocket clients
+                broadcastMovement(movement, currentQuizContext);
+
                 if (movementCallback != null) {
                     movementCallback.accept(movement);
                 }
@@ -206,6 +231,9 @@ public class MicrobitServiceImpl implements MicrobitService {
                 }
 
                 lastButton = button;
+
+                // Broadcast to WebSocket clients
+                broadcastButtonPress(button, currentQuizContext);
 
                 if (buttonCallback != null) {
                     buttonCallback.accept(button);
@@ -236,7 +264,17 @@ public class MicrobitServiceImpl implements MicrobitService {
 
     @Override
     public boolean isConnected() {
-        return connected && serialPort != null && serialPort.isOpen();
+        boolean actuallyConnected = connected && serialPort != null && serialPort.isOpen();
+
+        // If our state doesn't match reality, update it
+        if (connected != actuallyConnected) {
+            connected = actuallyConnected;
+            broadcastConnectionStatus(connected,
+                    serialPort != null ? serialPort.getSystemPortName() : null,
+                    connected ? "Connection verified" : "Connection lost");
+        }
+
+        return actuallyConnected;
     }
 
     @Override
@@ -249,7 +287,66 @@ public class MicrobitServiceImpl implements MicrobitService {
         return lastButton;
     }
 
+    // NEW WEBSOCKET INTEGRATION METHODS
+
+    /**
+     * Set the current quiz context for broadcasting
+     */
+    public void setQuizContext(String quizContext) {
+        this.currentQuizContext = quizContext;
+        if (webSocketHandler != null) {
+            webSocketHandler.broadcastQuizState(null, "context_changed", quizContext);
+        }
+    }
+
+    /**
+     * Broadcast quiz state changes
+     */
+    public void broadcastQuizState(Long quizId, String state, String currentQuestion) {
+        if (webSocketHandler != null) {
+            webSocketHandler.broadcastQuizState(quizId, state, currentQuestion);
+        }
+    }
+
+    /**
+     * Broadcast micro:bit connection status
+     */
+    public void broadcastConnectionStatus(boolean connected, String portName, String message) {
+        if (webSocketHandler != null) {
+            webSocketHandler.broadcastConnectionStatus(connected, portName, message);
+        }
+    }
+
+    /**
+     * Broadcast movement detection
+     */
+    public void broadcastMovement(MovementType movement, String quizContext) {
+        if (webSocketHandler != null) {
+            webSocketHandler.broadcastMovement(movement, quizContext);
+        }
+    }
+
+    /**
+     * Broadcast button press
+     */
+    public void broadcastButtonPress(ButtonType button, String quizContext) {
+        if (webSocketHandler != null) {
+            webSocketHandler.broadcastButtonPress(button, quizContext);
+        }
+    }
+
+    /**
+     * Get the number of active WebSocket sessions
+     */
+    public int getActiveWebSocketSessions() {
+        if (webSocketHandler != null) {
+            return webSocketHandler.getActiveSessionCount();
+        }
+        return 0;
+    }
+
     // Close the connection when the service is destroyed
+    @PreDestroy
     public void destroy() {
         if (listening) {
             stopListening();
@@ -258,6 +355,7 @@ public class MicrobitServiceImpl implements MicrobitService {
         if (connected && serialPort != null) {
             serialPort.closePort();
             connected = false;
+            broadcastConnectionStatus(false, null, "Service shutting down");
             logger.info("Closed serial port connection");
         }
     }
