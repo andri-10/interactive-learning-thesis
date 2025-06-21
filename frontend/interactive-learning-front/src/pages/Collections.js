@@ -1,13 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navigation from '../components/common/Navigation';
 import api from '../services/api';
 import CreateCollectionModal from '../components/collections/CreateCollectionModal';
+import AddDocumentToCollectionModal from '../components/collections/AddDocumentToCollectionModal';
+import CollectionDetailsModal from '../components/collections/CollectionDetailsModal';
+import { 
+  FolderOpen, 
+  Plus, 
+  AlertTriangle, 
+  Loader, 
+  FileText, 
+  Brain, 
+  Trash2, 
+  Eye, 
+  BookOpen,
+  BarChart3
+} from 'lucide-react';
 
 const Collections = () => {
+  const navigate = useNavigate();
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   useEffect(() => {
@@ -21,7 +40,40 @@ const Collections = () => {
       console.log('Fetching collections...');
       const response = await api.get('/collections');
       console.log('Collections received:', response.data?.length || 0, 'collections');
-      setCollections(response.data || []);
+      
+      // Enhance collections with counts
+      const enhancedCollections = await Promise.all(
+        (response.data || []).map(async (collection) => {
+          try {
+            // Fetch documents in this collection
+            const documentsResponse = await api.get(`/documents/collection/${collection.id}`);
+            const documents = documentsResponse.data || [];
+            
+            // Fetch quizzes in this collection
+            const quizzesResponse = await api.get(`/quizzes/collection/${collection.id}`);
+            const quizzes = quizzesResponse.data || [];
+            
+            return {
+              ...collection,
+              documentCount: documents.length,
+              quizCount: quizzes.length,
+              documents: documents,
+              quizzes: quizzes
+            };
+          } catch (error) {
+            console.error(`Error fetching data for collection ${collection.id}:`, error);
+            return {
+              ...collection,
+              documentCount: 0,
+              quizCount: 0,
+              documents: [],
+              quizzes: []
+            };
+          }
+        })
+      );
+      
+      setCollections(enhancedCollections);
       setError('');
     } catch (error) {
       console.error('Error fetching collections:', error);
@@ -51,15 +103,8 @@ const Collections = () => {
       console.log('Collection created successfully');
       showToast('Collection created successfully!', 'success');
       
-      const newCollection = {
-        id: response.data?.id || Date.now(),
-        name: collectionData.name,
-        description: collectionData.description || '',
-        documentCount: 0,
-        quizCount: 0
-      };
-      
-      setCollections(prevCollections => [...prevCollections, newCollection]);
+      // Refresh collections to get updated data
+      fetchCollections();
       
       return true;
     } catch (error) {
@@ -70,6 +115,10 @@ const Collections = () => {
   };
 
   const handleDeleteCollection = async (collectionId) => {
+    if (!window.confirm('Are you sure you want to delete this collection? This will not delete the documents or quizzes, just remove them from this collection.')) {
+      return;
+    }
+
     try {
       await api.delete(`/collections/${collectionId}`);
       showToast('Collection deleted successfully', 'success');
@@ -81,6 +130,22 @@ const Collections = () => {
       showToast('Failed to delete collection', 'error');
       console.error('Error deleting collection:', error);
     }
+  };
+
+  const handleAddDocuments = (collection) => {
+    setSelectedCollection(collection);
+    setShowAddDocumentModal(true);
+  };
+
+  const handleViewDetails = (collection) => {
+    setSelectedCollection(collection);
+    setShowDetailsModal(true);
+  };
+
+  const handleDocumentAdded = () => {
+    // Refresh collections to update counts
+    fetchCollections();
+    showToast('Document added to collection successfully!', 'success');
   };
 
   if (loading) {
@@ -96,7 +161,7 @@ const Collections = () => {
           color: 'var(--text-secondary)'
         }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '20px' }}>📚</div>
+            <Loader size={48} className="animate-spin" style={{ marginBottom: '20px' }} />
             <div>Loading collections...</div>
           </div>
         </div>
@@ -116,7 +181,7 @@ const Collections = () => {
           height: 'calc(100vh - 64px)',
           color: 'var(--error)'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+          <AlertTriangle size={48} style={{ marginBottom: '16px' }} />
           <div style={{ fontSize: '18px', marginBottom: '16px' }}>{error}</div>
           <button onClick={fetchCollections} className="btn-primary">
             Try Again
@@ -135,45 +200,60 @@ const Collections = () => {
       <div className="container" style={{ marginTop: '30px', paddingBottom: '40px' }}>
         {/* Page Header */}
         <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'flex-start', 
-          marginBottom: '30px' 
+          marginBottom: '40px',
+          textAlign: 'center',
+          padding: '0 20px'
         }}>
-          <div>
-            <h1 style={{ 
-              color: 'var(--text-primary)', 
-              fontSize: '32px',
-              fontWeight: 'bold',
-              margin: 0,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}>
-              📚 My Collections ({collections.length})
-            </h1>
-            <p style={{ 
-              color: 'var(--text-secondary)', 
-              fontSize: '16px',
-              margin: '8px 0 0 0'
-            }}>
-              Organize your documents into collections for better management
-            </p>
-          </div>
+          <h1 style={{ 
+            color: 'var(--text-primary)', 
+            fontSize: '36px',
+            fontWeight: 'bold',
+            margin: '0 0 12px 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            justifyContent: 'center',
+            background: 'linear-gradient(135deg, var(--secondary), var(--accent))',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            <FolderOpen size={36} style={{ color: 'var(--secondary)' }} />
+            My Collections ({collections.length})
+          </h1>
+          <p style={{ 
+            color: 'var(--text-secondary)', 
+            fontSize: '18px',
+            margin: '0 0 24px 0',
+            maxWidth: '600px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            lineHeight: '1.6'
+          }}>
+            Organize your documents into themed collections for structured learning and better progress tracking
+          </p>
           
           <button 
             onClick={() => setShowCreateModal(true)}
             className="btn-primary"
-            style={{ fontSize: '16px', padding: '12px 24px' }}
+            style={{ 
+              fontSize: '16px', 
+              padding: '12px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              margin: '0 auto'
+            }}
           >
-            ➕ New Collection
+            <Plus size={18} />
+            New Collection
           </button>
         </div>
 
         {/* Collections Display */}
         {collections.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
-            <div style={{ fontSize: '80px', marginBottom: '20px' }}>📁</div>
+            <FolderOpen size={80} style={{ marginBottom: '20px', color: 'var(--text-secondary)' }} />
             <h2 style={{ fontSize: '24px', marginBottom: '12px', color: 'var(--text-primary)' }}>
               No collections yet
             </h2>
@@ -183,16 +263,24 @@ const Collections = () => {
             <button 
               onClick={() => setShowCreateModal(true)}
               className="btn-primary"
-              style={{ fontSize: '16px', padding: '12px 24px' }}
+              style={{ 
+                fontSize: '16px', 
+                padding: '12px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                margin: '0 auto'
+              }}
             >
-              ➕ Create First Collection
+              <Plus size={18} />
+              Create First Collection
             </button>
           </div>
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-            gap: '20px',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+            gap: '24px',
             marginBottom: '30px'
           }}>
             {collections.map((collection) => (
@@ -204,83 +292,201 @@ const Collections = () => {
                   padding: '24px',
                   border: '1px solid var(--border)',
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
-                  transition: 'all 0.3s ease'
+                  transition: 'all 0.3s ease',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.1)';
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.1)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.05)';
                 }}
               >
-                <div style={{ marginBottom: '16px' }}>
-                  <h3 style={{ 
-                    margin: '0 0 8px 0', 
-                    color: 'var(--text-primary)', 
-                    fontSize: '20px',
-                    fontWeight: '600'
-                  }}>
-                    📁 {collection.name}
-                  </h3>
-                  
-                  {collection.description && (
-                    <p style={{ 
-                      color: 'var(--text-secondary)', 
-                      fontSize: '14px',
-                      margin: '0 0 12px 0',
-                      lineHeight: '1.4'
+                {/* Collection Header */}
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      backgroundColor: 'var(--secondary)',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}>
-                      {collection.description}
-                    </p>
-                  )}
+                      <BookOpen size={20} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ 
+                        margin: '0 0 4px 0', 
+                        color: 'var(--text-primary)', 
+                        fontSize: '20px',
+                        fontWeight: '600',
+                        lineHeight: '1.3'
+                      }}>
+                        {collection.name}
+                      </h3>
+                      {collection.description && (
+                        <p style={{ 
+                          color: 'var(--text-secondary)', 
+                          fontSize: '14px',
+                          margin: 0,
+                          lineHeight: '1.4'
+                        }}>
+                          {collection.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
+                {/* Stats */}
                 <div style={{
                   display: 'flex',
-                  gap: '16px',
-                  marginBottom: '16px',
-                  fontSize: '14px',
-                  color: 'var(--text-secondary)'
+                  gap: '20px',
+                  marginBottom: '20px',
+                  padding: '16px',
+                  backgroundColor: 'var(--background)',
+                  borderRadius: '12px'
                 }}>
-                  <span>📄 {collection.documentCount || 0} documents</span>
-                  <span>🧠 {collection.quizCount || 0} quizzes</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={16} style={{ color: 'var(--primary)' }} />
+                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                      {collection.documentCount || 0} docs
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Brain size={16} style={{ color: 'var(--accent)' }} />
+                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                      {collection.quizCount || 0} quizzes
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <BarChart3 size={16} style={{ color: 'var(--success)' }} />
+                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                      {((collection.quizCount || 0) / Math.max(collection.documentCount || 1, 1) * 100).toFixed(0)}% coverage
+                    </span>
+                  </div>
                 </div>
 
-                <button
-                  onClick={() => handleDeleteCollection(collection.id)}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: 'var(--error)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = '#dc2626';
-                    e.target.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = 'var(--error)';
-                    e.target.style.transform = 'translateY(0)';
-                  }}
-                >
-                  🗑️ Delete
-                </button>
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleViewDetails(collection)}
+                    style={{
+                      flex: 1,
+                      padding: '10px 16px',
+                      backgroundColor: 'var(--primary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = 'var(--primary-dark)';
+                      e.target.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = 'var(--primary)';
+                      e.target.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <Eye size={16} />
+                    View
+                  </button>
+                  
+                  <button
+                    onClick={() => handleAddDocuments(collection)}
+                    style={{
+                      flex: 1,
+                      padding: '10px 16px',
+                      backgroundColor: 'var(--secondary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#0891b2';
+                      e.target.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = 'var(--secondary)';
+                      e.target.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <Plus size={16} />
+                    Add Docs
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteCollection(collection.id)}
+                    style={{
+                      padding: '10px 12px',
+                      backgroundColor: 'var(--error)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#dc2626';
+                      e.target.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = 'var(--error)';
+                      e.target.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Create Collection Modal */}
+        {/* Modals */}
         <CreateCollectionModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onCreate={handleCreateCollection}
+        />
+
+        <AddDocumentToCollectionModal
+          isOpen={showAddDocumentModal}
+          onClose={() => setShowAddDocumentModal(false)}
+          collection={selectedCollection}
+          onDocumentAdded={handleDocumentAdded}
+        />
+
+        <CollectionDetailsModal
+          isOpen={showDetailsModal}
+          onClose={() => setShowDetailsModal(false)}
+          collection={selectedCollection}
+          onRefresh={fetchCollections}
         />
 
         {/* Toast Notifications */}
@@ -294,9 +500,12 @@ const Collections = () => {
             padding: '12px 20px',
             borderRadius: '8px',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            zIndex: 1000
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}>
-            {toast.message}
+            {toast.type === 'success' ? '✓' : '⚠'} {toast.message}
           </div>
         )}
       </div>

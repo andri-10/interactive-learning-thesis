@@ -38,29 +38,56 @@ public class MicrobitServiceImpl implements MicrobitService {
 
     @Override
     public boolean initializeConnection() {
-        logger.info("Attempting to initialize micro:bit connection...");
+        logger.info("=== STARTING MICROBIT CONNECTION ===");
 
-        // Close any existing connection
-        if (connected && serialPort != null) {
-            serialPort.closePort();
-            connected = false;
-            broadcastConnectionStatus(false, null, "Previous connection closed");
-        }
+        // Close existing connection
+        disconnect();
 
         SerialPort[] ports = SerialPort.getCommPorts();
+        logger.info("Available serial ports: {}", ports.length);
 
-        if (ports.length == 0) {
-            logger.error("No serial ports available");
-            broadcastConnectionStatus(false, null, "No serial ports available");
+        for (SerialPort port : ports) {
+            logger.info("Port: {} - Description: {}", port.getSystemPortName(), port.getDescriptivePortName());
+        }
+
+        // Find micro:bit port
+        serialPort = findMicrobitPort(ports);
+
+        if (serialPort == null) {
+            logger.error("No suitable micro:bit port found");
+            broadcastConnectionStatus(false, null, "No micro:bit port found");
             return false;
         }
 
-        logger.info("Available serial ports:");
-        for (SerialPort port : ports) {
-            logger.info("  - " + port.getSystemPortName() + ": " + port.getDescriptivePortName());
+        logger.info("Selected port: {} - {}", serialPort.getSystemPortName(), serialPort.getDescriptivePortName());
+
+        // Configure and open port
+        serialPort.setComPortParameters(BAUD_RATE, DATA_BITS, STOP_BITS, PARITY);
+        serialPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 1000, 0);
+
+        connected = serialPort.openPort();
+
+        if (!connected) {
+            logger.error("FAILED to open serial port: {}", serialPort.getSystemPortName());
+            broadcastConnectionStatus(false, serialPort.getSystemPortName(), "Failed to open port");
+            return false;
         }
 
-        // Try to find the Micro:bit device
+        logger.info("✅ SUCCESS: Connected to port: {}", serialPort.getSystemPortName());
+        broadcastConnectionStatus(true, serialPort.getSystemPortName(), "Successfully connected");
+
+        // Brief pause to let port stabilize
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        return connected;
+    }
+
+    private SerialPort findMicrobitPort(SerialPort[] ports) {
+        // Strategy 1: Look for micro:bit specific identifiers
         for (SerialPort port : ports) {
             String portName = port.getDescriptivePortName().toLowerCase();
             String systemName = port.getSystemPortName().toLowerCase();
@@ -69,180 +96,180 @@ public class MicrobitServiceImpl implements MicrobitService {
                     portName.contains("microbit") ||
                     portName.contains("mbed") ||
                     systemName.contains("usbmodem")) {
-                serialPort = port;
-                logger.info("Found potential Micro:bit device: " + port.getSystemPortName());
-                break;
+                logger.info("Found micro:bit device: {}", port.getSystemPortName());
+                return port;
             }
         }
 
-        // If no Micro:bit was found, try the first port
-        if (serialPort == null && ports.length > 0) {
-            logger.warn("No specific Micro:bit device found. Using first available port: {}", ports[0].getSystemPortName());
-            serialPort = ports[0];
-            broadcastConnectionStatus(false, null, "Trying first available port: " + ports[0].getSystemPortName());
-        }
-
-        if (serialPort == null) {
-            logger.error("No serial port selected");
-            broadcastConnectionStatus(false, null, "No serial port could be selected");
-            return false;
-        }
-
-        // Configure and open the port
-        serialPort.setComPortParameters(BAUD_RATE, DATA_BITS, STOP_BITS, PARITY);
-        serialPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 1000, 0);
-
-        connected = serialPort.openPort();
-        if (!connected) {
-            logger.error("Failed to open serial port: " + serialPort.getSystemPortName());
-            broadcastConnectionStatus(false, serialPort.getSystemPortName(),
-                    "Failed to open port: " + serialPort.getSystemPortName());
-        } else {
-            logger.info("Connected to: " + serialPort.getSystemPortName());
-            broadcastConnectionStatus(true, serialPort.getSystemPortName(),
-                    "Successfully connected to micro:bit");
-
-            // Flush any initial data
-            try {
-                Thread.sleep(500);
-                InputStream in = serialPort.getInputStream();
-                byte[] buffer = new byte[1024];
-                while (in.available() > 0) {
-                    in.read(buffer);
-                }
-            } catch (Exception e) {
-                logger.warn("Error flushing initial data: " + e.getMessage());
+        // Strategy 2: Look for COM5 specifically
+        for (SerialPort port : ports) {
+            if (port.getSystemPortName().equalsIgnoreCase("COM5")) {
+                logger.info("Found COM5 (potential micro:bit): {}", port.getSystemPortName());
+                return port;
             }
         }
 
-        return connected;
+        // Strategy 3: Use first non-system USB serial port
+        for (SerialPort port : ports) {
+            String portName = port.getDescriptivePortName().toLowerCase();
+            if (portName.contains("usb serial") &&
+                    !portName.contains("intel") &&
+                    !portName.contains("amt")) {
+                logger.warn("Using USB serial port: {}", port.getSystemPortName());
+                return port;
+            }
+        }
+
+        return null;
     }
 
     @Override
     public void startListening(Consumer<MovementType> movementCallback, Consumer<ButtonType> buttonCallback) {
         if (!connected || serialPort == null) {
             logger.error("Cannot start listening: not connected");
-            broadcastConnectionStatus(false, null, "Cannot start listening: not connected");
             return;
         }
 
         if (listening) {
-            logger.warn("Already listening");
-            return;
+            logger.warn("Already listening - stopping previous listener");
+            stopListening();
         }
 
         listening = true;
-        logger.info("Starting to listen for micro:bit data...");
+        logger.info("🎧 Starting micro:bit listener...");
 
-        // Start a new thread to listen for data
         listenerThread = new Thread(() -> {
-            byte[] buffer = new byte[1024];
             StringBuilder messageBuffer = new StringBuilder();
+            byte[] buffer = new byte[256];
 
             try {
                 InputStream in = serialPort.getInputStream();
+                logger.info("✅ Listener ready - waiting for micro:bit data...");
 
-                while (listening) {
-                    if (in.available() > 0) {
-                        int numBytes = in.read(buffer);
+                while (listening && connected) {
+                    try {
+                        int available = in.available();
+                        if (available > 0) {
+                            int bytesRead = in.read(buffer, 0, Math.min(available, buffer.length));
 
-                        for (int i = 0; i < numBytes; i++) {
-                            char c = (char) buffer[i];
-
-                            if (c == '\n') {
-                                // Process the complete message
-                                String message = messageBuffer.toString().trim();
-                                if (!message.isEmpty()) {
-                                    logger.debug("Received message: {}", message);
-                                    processMessage(message, movementCallback, buttonCallback);
-                                }
-                                messageBuffer = new StringBuilder();
-                            } else {
-                                messageBuffer.append(c);
+                            if (bytesRead > 0) {
+                                processIncomingBytes(buffer, bytesRead, messageBuffer, movementCallback, buttonCallback);
                             }
+                        } else {
+                            Thread.sleep(10); // Small delay when no data
                         }
+                    } catch (IOException e) {
+                        if (listening) {
+                            logger.error("❌ Read error: {}", e.getMessage());
+                            break;
+                        }
+                    } catch (InterruptedException e) {
+                        logger.info("🛑 Listener interrupted");
+                        break;
                     }
-
-                    // Sleep to prevent CPU hogging
-                    Thread.sleep(10);
                 }
-            } catch (IOException | InterruptedException e) {
-                logger.error("Error while listening: " + e.getMessage(), e);
+            } catch (Exception e) {
+                logger.error("❌ Fatal listener error: {}", e.getMessage());
+            } finally {
                 listening = false;
-                connected = false;
-                broadcastConnectionStatus(false, null, "Connection lost: " + e.getMessage());
+                logger.info("🛑 Listener stopped");
             }
         });
 
         listenerThread.setDaemon(true);
+        listenerThread.setName("MicrobitListener");
         listenerThread.start();
-
-        logger.info("Started listening for Micro:bit data");
     }
 
-    /**
-     * Process a message received from the Micro:bit
-     * Expected format: "M:TYPE" for movements or "B:TYPE" for buttons
-     * Where TYPE is one of the enum values
-     */
+    private void processIncomingBytes(byte[] buffer, int bytesRead, StringBuilder messageBuffer,
+                                      Consumer<MovementType> movementCallback, Consumer<ButtonType> buttonCallback) {
+
+        for (int i = 0; i < bytesRead; i++) {
+            char c = (char) buffer[i];
+
+            if (c == '\n') {
+                String message = messageBuffer.toString().trim();
+                if (!message.isEmpty() && !message.startsWith("Sent")) {
+                    logger.info("📨 Received: '{}'", message);
+                    processMessage(message, movementCallback, buttonCallback);
+                }
+                messageBuffer.setLength(0); // Clear buffer
+            } else if (c == '\r') {
+                // Ignore carriage return
+                continue;
+            } else if (c >= 32 && c <= 126) {
+                // Only accept printable ASCII characters
+                messageBuffer.append(c);
+
+                // Prevent buffer overflow
+                if (messageBuffer.length() > 200) {
+                    logger.warn("Message buffer overflow, clearing");
+                    messageBuffer.setLength(0);
+                }
+            }
+        }
+    }
+
     private void processMessage(String message, Consumer<MovementType> movementCallback,
                                 Consumer<ButtonType> buttonCallback) {
 
         if (message.length() < 3 || !message.contains(":")) {
-            logger.warn("Invalid message format: {}", message);
+            logger.warn("Invalid message format: '{}'", message);
             return;
         }
 
         try {
-            String type = message.substring(0, 1);
-            String value = message.substring(2).trim().toUpperCase();
+            String[] parts = message.split(":", 2);
+            if (parts.length != 2) {
+                logger.warn("Message split failed: '{}'", message);
+                return;
+            }
 
-            logger.info("Processing message: Type={}, Value={}", type, value);
+            String type = parts[0].trim();
+            String value = parts[1].trim().toUpperCase();
 
-            if ("M".equals(type)) {
-                // Movement message
-                MovementType movement;
+            logger.info("Processing: Type='{}', Value='{}'", type, value);
 
-                try {
-                    movement = MovementType.valueOf(value);
-                    logger.info("Detected movement: {}", movement);
-                } catch (IllegalArgumentException e) {
-                    logger.warn("Unknown movement type: {}", value);
-                    return;
-                }
-
-                lastMovement = movement;
-
-                // Broadcast to WebSocket clients
-                broadcastMovement(movement, currentQuizContext);
-
-                if (movementCallback != null) {
-                    movementCallback.accept(movement);
-                }
-            } else if ("B".equals(type)) {
-                ButtonType button;
-
-                try {
-                    button = ButtonType.valueOf(value);
-                    logger.info("Detected button press: {}", button);
-                } catch (IllegalArgumentException e) {
-                    logger.warn("Unknown button type: {}", value);
-                    return;
-                }
-
-                lastButton = button;
-
-                // Broadcast to WebSocket clients
-                broadcastButtonPress(button, currentQuizContext);
-
-                if (buttonCallback != null) {
-                    buttonCallback.accept(button);
-                }
-            } else {
-                logger.warn("Unknown message type: {}", type);
+            switch (type) {
+                case "M" -> handleMovementMessage(value, movementCallback);
+                case "B" -> handleButtonMessage(value, buttonCallback);
+                case "INIT" -> logger.info("🎯 Micro:bit initialization: {}", value);
+                default -> logger.warn("❌ Unknown message type: '{}'", type);
             }
         } catch (Exception e) {
-            logger.error("Error processing message: {}", message, e);
+            logger.error("Error processing message '{}': {}", message, e.getMessage());
+        }
+    }
+
+    private void handleMovementMessage(String value, Consumer<MovementType> movementCallback) {
+        try {
+            MovementType movement = MovementType.valueOf(value);
+            logger.info("✅ Movement: {}", movement);
+
+            lastMovement = movement;
+            broadcastMovement(movement, currentQuizContext);
+
+            if (movementCallback != null) {
+                movementCallback.accept(movement);
+            }
+        } catch (IllegalArgumentException e) {
+            logger.warn("❌ Unknown movement: '{}'", value);
+        }
+    }
+
+    private void handleButtonMessage(String value, Consumer<ButtonType> buttonCallback) {
+        try {
+            ButtonType button = ButtonType.valueOf(value);
+            logger.info("✅ Button: {}", button);
+
+            lastButton = button;
+            broadcastButtonPress(button, currentQuizContext);
+
+            if (buttonCallback != null) {
+                buttonCallback.accept(button);
+            }
+        } catch (IllegalArgumentException e) {
+            logger.warn("❌ Unknown button: '{}'", value);
         }
     }
 
@@ -250,23 +277,52 @@ public class MicrobitServiceImpl implements MicrobitService {
     public void stopListening() {
         listening = false;
 
-        if (listenerThread != null) {
+        if (listenerThread != null && listenerThread.isAlive()) {
             try {
-                listenerThread.join(1000);
+                listenerThread.interrupt();
+                listenerThread.join(2000); // Wait up to 2 seconds
             } catch (InterruptedException e) {
-                logger.warn("Interrupted while stopping listener", e);
+                Thread.currentThread().interrupt();
+                logger.warn("Interrupted while stopping listener");
             }
             listenerThread = null;
         }
 
-        logger.info("Stopped listening for Micro:bit data");
+        logger.info("🛑 Stopped listening");
+    }
+
+    public void disconnect() {
+        logger.info("🔌 Disconnecting micro:bit...");
+
+        // Stop listening first
+        stopListening();
+
+        // Close serial port
+        if (serialPort != null) {
+            try {
+                if (serialPort.isOpen()) {
+                    serialPort.closePort();
+                    logger.info("✅ Serial port closed");
+                }
+            } catch (Exception e) {
+                logger.error("Error closing serial port: {}", e.getMessage());
+            }
+            serialPort = null;
+        }
+
+        // Reset state
+        connected = false;
+        lastMovement = MovementType.NONE;
+        lastButton = ButtonType.NONE;
+        currentQuizContext = null;
+
+        broadcastConnectionStatus(false, null, "Disconnected");
     }
 
     @Override
     public boolean isConnected() {
         boolean actuallyConnected = connected && serialPort != null && serialPort.isOpen();
 
-        // If our state doesn't match reality, update it
         if (connected != actuallyConnected) {
             connected = actuallyConnected;
             broadcastConnectionStatus(connected,
@@ -287,11 +343,7 @@ public class MicrobitServiceImpl implements MicrobitService {
         return lastButton;
     }
 
-    // NEW WEBSOCKET INTEGRATION METHODS
-
-    /**
-     * Set the current quiz context for broadcasting
-     */
+    // WebSocket integration methods
     public void setQuizContext(String quizContext) {
         this.currentQuizContext = quizContext;
         if (webSocketHandler != null) {
@@ -299,45 +351,30 @@ public class MicrobitServiceImpl implements MicrobitService {
         }
     }
 
-    /**
-     * Broadcast quiz state changes
-     */
     public void broadcastQuizState(Long quizId, String state, String currentQuestion) {
         if (webSocketHandler != null) {
             webSocketHandler.broadcastQuizState(quizId, state, currentQuestion);
         }
     }
 
-    /**
-     * Broadcast micro:bit connection status
-     */
     public void broadcastConnectionStatus(boolean connected, String portName, String message) {
         if (webSocketHandler != null) {
             webSocketHandler.broadcastConnectionStatus(connected, portName, message);
         }
     }
 
-    /**
-     * Broadcast movement detection
-     */
     public void broadcastMovement(MovementType movement, String quizContext) {
         if (webSocketHandler != null) {
             webSocketHandler.broadcastMovement(movement, quizContext);
         }
     }
 
-    /**
-     * Broadcast button press
-     */
     public void broadcastButtonPress(ButtonType button, String quizContext) {
         if (webSocketHandler != null) {
             webSocketHandler.broadcastButtonPress(button, quizContext);
         }
     }
 
-    /**
-     * Get the number of active WebSocket sessions
-     */
     public int getActiveWebSocketSessions() {
         if (webSocketHandler != null) {
             return webSocketHandler.getActiveSessionCount();
@@ -345,18 +382,9 @@ public class MicrobitServiceImpl implements MicrobitService {
         return 0;
     }
 
-    // Close the connection when the service is destroyed
     @PreDestroy
     public void destroy() {
-        if (listening) {
-            stopListening();
-        }
-
-        if (connected && serialPort != null) {
-            serialPort.closePort();
-            connected = false;
-            broadcastConnectionStatus(false, null, "Service shutting down");
-            logger.info("Closed serial port connection");
-        }
+        logger.info("Shutting down MicrobitService...");
+        disconnect();
     }
 }
