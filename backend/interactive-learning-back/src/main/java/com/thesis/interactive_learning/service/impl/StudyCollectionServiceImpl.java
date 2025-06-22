@@ -38,10 +38,13 @@ public class StudyCollectionServiceImpl implements StudyCollectionService {
 
         StudyCollection saved = studyCollectionRepository.save(collection);
 
+        // Refresh the entity to get updated associations
+        saved = studyCollectionRepository.findById(saved.getId()).orElse(saved);
+
         // Populate transient fields for JSON response
         saved.setUserId(saved.getUser().getId());
-        saved.setDocumentCount(saved.getDocuments().size());
-        saved.setQuizCount(saved.getQuizzes().size());
+        saved.setDocumentCount(saved.getDocuments() != null ? saved.getDocuments().size() : 0);
+        saved.setQuizCount(saved.getQuizzes() != null ? saved.getQuizzes().size() : 0);
 
         System.out.println("Collection saved with ID: " + saved.getId());
         return saved;

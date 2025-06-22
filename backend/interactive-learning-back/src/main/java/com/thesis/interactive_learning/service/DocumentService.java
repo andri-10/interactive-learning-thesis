@@ -20,4 +20,7 @@ public interface DocumentService {
 
     Map<String, Object> extractStructuredTextFromPdf(Long documentId) throws IOException;
     Map<String, Object> extractDocumentMetadata(Long documentId) throws IOException;
+
+    Document updateDocumentCollection(Long documentId, Long collectionId);
+    Document removeDocumentFromCollection(Long documentId);
 }

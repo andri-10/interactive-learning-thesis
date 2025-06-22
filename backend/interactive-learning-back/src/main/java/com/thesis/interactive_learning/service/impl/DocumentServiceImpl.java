@@ -290,4 +290,52 @@ public class DocumentServiceImpl implements DocumentService {
         return metadata;
     }
 
+    @Override
+    public Document updateDocumentCollection(Long documentId, Long collectionId) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+
+        StudyCollection collection = null;
+        if (collectionId != null) {
+            collection = studyCollectionRepository.findById(collectionId)
+                    .orElseThrow(() -> new RuntimeException("Collection not found"));
+        }
+
+        // Update document collection
+        document.setStudyCollection(collection);
+        Document savedDocument = documentRepository.save(document);
+
+        // Update all quizzes associated with this document
+        List<Quiz> documentQuizzes = quizRepository.findByDocumentId(documentId);
+        for (Quiz quiz : documentQuizzes) {
+            quiz.setStudyCollection(collection);
+            quizRepository.save(quiz);
+        }
+
+        System.out.println("Updated " + documentQuizzes.size() + " quizzes to collection: " +
+                (collection != null ? collection.getName() : "none"));
+
+        return savedDocument;
+    }
+
+    @Override
+    public Document removeDocumentFromCollection(Long documentId) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+
+        document.setStudyCollection(null);
+        Document savedDocument = documentRepository.save(document);
+
+        List<Quiz> documentQuizzes = quizRepository.findByDocumentId(documentId);
+        for (Quiz quiz : documentQuizzes) {
+            quiz.setStudyCollection(null);
+            quizRepository.save(quiz);
+        }
+
+        System.out.println("Removed " + documentQuizzes.size() + " quizzes from collection");
+
+        return savedDocument;
+    }
+
+
 }

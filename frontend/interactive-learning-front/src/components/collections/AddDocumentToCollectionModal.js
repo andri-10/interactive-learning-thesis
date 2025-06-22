@@ -20,7 +20,7 @@ const AddDocumentToCollectionModal = ({ isOpen, onClose, collection, onDocumentA
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterOption, setFilterOption] = useState('all'); // all, not-in-collection, recent
+  const [filterOption, setFilterOption] = useState('all'); 
 
   useEffect(() => {
     if (isOpen && collection) {
@@ -93,16 +93,13 @@ const AddDocumentToCollectionModal = ({ isOpen, onClose, collection, onDocumentA
     try {
       setAdding(true);
       
-      // Add each selected document to the collection
-      const promises = Array.from(selectedDocuments).map(async (documentId) => {
-        // Since we don't have a direct "add to collection" endpoint,
-        // we'll need to update the document with the collection ID
-        return api.put(`/documents/${documentId}`, {
-          collectionId: collection.id
-        });
+      // Use bulk update endpoint
+      const response = await api.post('/documents/bulk-collection-update', {
+        documentIds: Array.from(selectedDocuments),
+        collectionId: collection.id
       });
-
-      await Promise.all(promises);
+      
+      console.log(`Added ${response.data.documentsUpdated} documents and ${response.data.quizzesUpdated} quizzes to collection`);
       
       setSelectedDocuments(new Set());
       onDocumentAdded && onDocumentAdded();
@@ -119,7 +116,7 @@ const AddDocumentToCollectionModal = ({ isOpen, onClose, collection, onDocumentA
   const getFilteredDocuments = () => {
     let filtered = availableDocuments;
 
-    // Apply search filter
+    
     if (searchTerm) {
       filtered = filtered.filter(doc => 
         doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||

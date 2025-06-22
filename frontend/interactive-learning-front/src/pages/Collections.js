@@ -142,10 +142,9 @@ const Collections = () => {
     setShowDetailsModal(true);
   };
 
-  const handleDocumentAdded = () => {
-    // Refresh collections to update counts
+ const handleDocumentAdded = () => {
     fetchCollections();
-    showToast('Document added to collection successfully!', 'success');
+    showToast('Documents and associated quizzes added to collection successfully!', 'success');
   };
 
   if (loading) {

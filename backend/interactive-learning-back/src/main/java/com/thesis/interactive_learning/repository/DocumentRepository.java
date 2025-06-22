@@ -13,6 +13,5 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
 
     List<Document> findByUser(User user);
     List<Document> findByStudyCollectionId(Long collectionId);
-
-
+    List<Document> findByStudyCollectionIsNull();
 }

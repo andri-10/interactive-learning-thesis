@@ -52,8 +52,29 @@ const Navigation = () => {
             color: 'var(--primary)'
           }}
         >
-          <GraduationCap size={24} />
-          MicroLearning
+          <img 
+            src="/logo-horizontal.png" 
+            alt="MicroLearning Logo" 
+            style={{
+              height: '55px',
+              width: 'auto',
+              objectFit: 'contain'
+            }}
+            onError={(e) => {
+              // Fallback to text if logo fails to load
+              e.target.style.display = 'none';
+              e.target.nextSibling.style.display = 'flex';
+            }}
+          />
+          {/* Fallback text logo */}
+          <div style={{
+            display: 'none',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <GraduationCap size={24} />
+            MicroLearning
+          </div>
         </Link>
 
         {/* Navigation Links */}

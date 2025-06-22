@@ -1,7 +1,10 @@
 package com.thesis.interactive_learning.controllers;
 
+import com.thesis.interactive_learning.dto.BulkCollectionUpdateRequest;
 import com.thesis.interactive_learning.model.Document;
+import com.thesis.interactive_learning.model.Quiz;
 import com.thesis.interactive_learning.service.DocumentService;
+import com.thesis.interactive_learning.repository.QuizRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,10 +21,12 @@ import java.util.Map;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final QuizRepository quizRepository;
 
     @Autowired
-    public DocumentController(DocumentService documentService) {
+    public DocumentController(DocumentService documentService, QuizRepository quizRepository) {
         this.documentService = documentService;
+        this.quizRepository = quizRepository;
     }
 
     @PostMapping("/upload")
@@ -107,7 +113,6 @@ public class DocumentController {
     }
 
 
-
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteDocument(@PathVariable Long id) {
         try {
@@ -115,6 +120,73 @@ public class DocumentController {
             return new ResponseEntity<>(HttpStatus.NO_CONTENT);
         } catch (RuntimeException e) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @PutMapping("/{id}/collection")
+    public ResponseEntity<Map<String, Object>> updateDocumentCollection(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long collectionId) {
+        try {
+            Document updatedDocument = documentService.updateDocumentCollection(id, collectionId);
+
+            // Get updated quiz count for response
+            List<Quiz> updatedQuizzes = quizRepository.findByDocumentId(id);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("document", updatedDocument);
+            response.put("updatedQuizzesCount", updatedQuizzes.size());
+            response.put("message", "Document and " + updatedQuizzes.size() + " associated quizzes updated successfully");
+
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @DeleteMapping("/{id}/collection")
+    public ResponseEntity<Document> removeDocumentFromCollection(@PathVariable Long id) {
+        try {
+            Document updatedDocument = documentService.removeDocumentFromCollection(id);
+            return new ResponseEntity<>(updatedDocument, HttpStatus.OK);
+        } catch (RuntimeException e) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @GetMapping("/available")
+    public ResponseEntity<List<Document>> getAvailableDocuments() {
+        List<Document> documents = documentService.getDocumentsByCollectionId(null);
+        return new ResponseEntity<>(documents, HttpStatus.OK);
+    }
+
+    // Add this to DocumentController.java
+
+    @PostMapping("/bulk-collection-update")
+    public ResponseEntity<Map<String, Object>> bulkUpdateDocumentCollection(
+            @RequestBody BulkCollectionUpdateRequest request) {
+        try {
+            int documentsUpdated = 0;
+            int quizzesUpdated = 0;
+
+            for (Long documentId : request.getDocumentIds()) {
+                Document document = documentService.updateDocumentCollection(documentId, request.getCollectionId());
+                documentsUpdated++;
+
+                // Count associated quizzes that were also moved
+                List<Quiz> documentQuizzes = quizRepository.findByDocumentId(documentId);
+                quizzesUpdated += documentQuizzes.size();
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("documentsUpdated", documentsUpdated);
+            response.put("quizzesUpdated", quizzesUpdated);
+            response.put("message", String.format("Updated %d documents and %d quizzes", documentsUpdated, quizzesUpdated));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to update documents: " + e.getMessage()));
         }
     }
 

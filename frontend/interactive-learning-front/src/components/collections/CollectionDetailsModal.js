@@ -41,6 +41,10 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
     totalTimeSpent: 0,
     streak: 0
   });
+  const [showDeleteQuizModal, setShowDeleteQuizModal] = useState(false);
+  const [quizToDelete, setQuizToDelete] = useState(null);
+  const [showDeleteDocumentModal, setShowDeleteDocumentModal] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState(null);
 
   useEffect(() => {
     if (isOpen && collection) {
@@ -63,21 +67,46 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
       const quizzesData = quizzesResponse.data || [];
       setQuizzes(quizzesData);
 
-      // Fetch user progress for collection quizzes
+      // Fetch user progress for collection quizzes - improved approach
       try {
-        const progressPromises = quizzesData.map(quiz => 
-          api.get(`/progress/quiz/${quiz.id}`).catch(() => ({ data: [] }))
+        // First, try to get all progress data
+        const allProgressResponse = await api.get('/progress');
+        const allProgressData = allProgressResponse.data || [];
+        
+        // Filter progress for quizzes in this collection
+        const collectionQuizIds = new Set(quizzesData.map(quiz => quiz.id));
+        const collectionProgress = allProgressData.filter(progress => 
+          collectionQuizIds.has(progress.quiz?.id || progress.quizId)
         );
-        const progressResults = await Promise.all(progressPromises);
-        const allProgress = progressResults.flatMap(result => result.data || []);
-        setProgress(allProgress);
-
-        // Calculate stats
-        calculateStats(documentsData, quizzesData, allProgress);
+        
+        setProgress(collectionProgress);
+        calculateStats(documentsData, quizzesData, collectionProgress);
+        
       } catch (progressError) {
-        console.warn('Could not fetch progress data:', progressError);
-        setProgress([]);
-        calculateStats(documentsData, quizzesData, []);
+        console.warn('Could not fetch all progress, trying individual quiz progress:', progressError);
+        
+        // Fallback: try individual quiz progress endpoints
+        try {
+          const progressPromises = quizzesData.map(async (quiz) => {
+            try {
+              const response = await api.get(`/progress/quiz/${quiz.id}`);
+              return response.data || [];
+            } catch (err) {
+              console.warn(`No progress found for quiz ${quiz.id}`);
+              return [];
+            }
+          });
+          
+          const progressResults = await Promise.all(progressPromises);
+          const allProgress = progressResults.flat();
+          setProgress(allProgress);
+          calculateStats(documentsData, quizzesData, allProgress);
+          
+        } catch (fallbackError) {
+          console.warn('Could not fetch progress data:', fallbackError);
+          setProgress([]);
+          calculateStats(documentsData, quizzesData, []);
+        }
       }
 
     } catch (error) {
@@ -111,49 +140,61 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
     navigate(`/quiz/${quizId}`);
   };
 
-  const handleDeleteDocument = async (documentId) => {
-    if (!window.confirm('Are you sure you want to remove this document from the collection?')) {
-      return;
-    }
-
-    try {
-      // Remove document from collection (set collectionId to null)
-      await api.put(`/documents/${documentId}`, { collectionId: null });
-      
-      // Refresh the collection details
-      fetchCollectionDetails();
-      onRefresh && onRefresh();
-      
-    } catch (error) {
-      console.error('Error removing document from collection:', error);
-      setError('Failed to remove document from collection');
-    }
+  const handleDeleteDocument = (document) => {
+    setDocumentToDelete(document);
+    setShowDeleteDocumentModal(true);
   };
 
-  const handleDeleteQuiz = async (quizId) => {
-    if (!window.confirm('Are you sure you want to delete this quiz?')) {
-      return;
+  const confirmDeleteDocument = async () => {
+  if (!documentToDelete) return;
+  
+  try {
+    const response = await api.delete(`/documents/${documentToDelete.id}/collection`);
+    
+    
+    if (response.data?.updatedQuizzesCount) {
+      console.log(`Removed document and ${response.data.updatedQuizzesCount} associated quizzes from collection`);
     }
+    
+    setDocuments(prevDocuments => prevDocuments.filter(doc => doc.id !== documentToDelete.id));
+    
+    fetchCollectionDetails();
+    onRefresh && onRefresh();
+    
+  } catch (error) {
+    console.error('Error removing document from collection:', error);
+    setError('Failed to remove document from collection');
+  } finally {
+    setShowDeleteDocumentModal(false);
+    setDocumentToDelete(null);
+  }
+};
 
+  const handleDeleteQuiz = (quiz) => {
+    setQuizToDelete(quiz);
+    setShowDeleteQuizModal(true);
+  };
+
+  const confirmDeleteQuiz = async () => {
+    if (!quizToDelete) return;
+    
     try {
-      await api.delete(`/quizzes/${quizId}`);
+      await api.delete(`/quizzes/${quizToDelete.id}`);
       
-      // Refresh the collection details
+      // Update local state immediately for better UX
+      setQuizzes(prevQuizzes => prevQuizzes.filter(quiz => quiz.id !== quizToDelete.id));
+      
+      // Refresh collection details to get updated stats
       fetchCollectionDetails();
       onRefresh && onRefresh();
       
     } catch (error) {
       console.error('Error deleting quiz:', error);
       setError('Failed to delete quiz');
+    } finally {
+      setShowDeleteQuizModal(false);
+      setQuizToDelete(null);
     }
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
   };
 
   const formatFileSize = (bytes) => {
@@ -169,6 +210,15 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     return `${hours}h ${remainingMinutes}m`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
   const getCompletionRate = () => {
@@ -447,7 +497,7 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    onClick={() => handleDeleteDocument(document.id)}
+                    onClick={() => handleDeleteDocument(document)}
                     style={{
                       padding: '8px',
                       backgroundColor: 'var(--error)',
@@ -624,7 +674,7 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
                     </button>
                     
                     <button
-                      onClick={() => handleDeleteQuiz(quiz.id)}
+                      onClick={() => handleDeleteQuiz(quiz)}
                       style={{
                         padding: '8px',
                         backgroundColor: 'var(--error)',
@@ -790,158 +840,560 @@ const CollectionDetailsModal = ({ isOpen, onClose, collection, onRefresh }) => {
               padding: '12px 16px',
               borderRadius: '8px',
               marginBottom: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <AlertCircle size={16} />
-              {error}
-            </div>
-          )}
+             display: 'flex',
+             alignItems: 'center',
+             gap: '8px'
+           }}>
+             <AlertCircle size={16} />
+             {error}
+           </div>
+         )}
 
-          {/* Collection Description */}
-          {collection.description && (
-            <div style={{
-              padding: '16px',
-              backgroundColor: 'var(--background)',
-              borderRadius: '8px',
-              marginBottom: '24px',
-              fontSize: '14px',
-              color: 'var(--text-secondary)',
-              lineHeight: '1.5'
-            }}>
-              {collection.description}
-            </div>
-          )}
+         {/* Collection Description */}
+         {collection.description && (
+           <div style={{
+             padding: '16px',
+             backgroundColor: 'var(--background)',
+             borderRadius: '8px',
+             marginBottom: '24px',
+             fontSize: '14px',
+             color: 'var(--text-secondary)',
+             lineHeight: '1.5'
+           }}>
+             {collection.description}
+           </div>
+         )}
 
-          {/* Tab Navigation */}
-          <div style={{
-            display: 'flex',
-            borderBottom: '2px solid var(--border)',
-            marginBottom: '24px'
-          }}>
-            {[
-              { id: 'overview', label: 'Overview', icon: BarChart3 },
-              { id: 'documents', label: 'Documents', icon: FileText },
-              { id: 'quizzes', label: 'Quizzes', icon: Brain },
-              { id: 'progress', label: 'Progress', icon: TrendingUp }
-            ].map((tab) => {
-              const IconComponent = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={{
-                    padding: '12px 16px',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeTab !== tab.id) {
-                      e.target.style.color = 'var(--text-primary)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTab !== tab.id) {
-                      e.target.style.color = 'var(--text-secondary)';
-                    }
-                  }}
-                >
-                  <IconComponent size={16} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+         {/* Tab Navigation */}
+         <div style={{
+           display: 'flex',
+           borderBottom: '2px solid var(--border)',
+           marginBottom: '24px'
+         }}>
+           {[
+             { id: 'overview', label: 'Overview', icon: BarChart3 },
+             { id: 'documents', label: 'Documents', icon: FileText },
+             { id: 'quizzes', label: 'Quizzes', icon: Brain },
+             { id: 'progress', label: 'Progress', icon: TrendingUp }
+           ].map((tab) => {
+             const IconComponent = tab.icon;
+             return (
+               <button
+                 key={tab.id}
+                 onClick={() => setActiveTab(tab.id)}
+                 style={{
+                   padding: '12px 16px',
+                   border: 'none',
+                   backgroundColor: 'transparent',
+                   color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-secondary)',
+                   cursor: 'pointer',
+                   borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
+                   fontSize: '14px',
+                   fontWeight: '500',
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: '6px',
+                   transition: 'all 0.2s'
+                 }}
+                 onMouseEnter={(e) => {
+                   if (activeTab !== tab.id) {
+                     e.target.style.color = 'var(--text-primary)';
+                   }
+                 }}
+                 onMouseLeave={(e) => {
+                   if (activeTab !== tab.id) {
+                     e.target.style.color = 'var(--text-secondary)';
+                   }
+                 }}
+               >
+                 <IconComponent size={16} />
+                 {tab.label}
+               </button>
+             );
+           })}
+         </div>
 
-          {/* Tab Content */}
-          <div style={{ minHeight: '300px' }}>
-            {activeTab === 'overview' && renderOverview()}
-            {activeTab === 'documents' && renderDocuments()}
-            {activeTab === 'quizzes' && renderQuizzes()}
-            {activeTab === 'progress' && renderProgress()}
-          </div>
+         {/* Tab Content */}
+         <div style={{ minHeight: '300px' }}>
+           {activeTab === 'overview' && renderOverview()}
+           {activeTab === 'documents' && renderDocuments()}
+           {activeTab === 'quizzes' && renderQuizzes()}
+           {activeTab === 'progress' && renderProgress()}
+         </div>
 
-          {/* Footer Actions */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: '32px',
-            paddingTop: '20px',
-            borderTop: '1px solid var(--border)'
-          }}>
-            <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-              Last updated: {formatDate(new Date().toISOString())}
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                onClick={() => {
-                  onRefresh && onRefresh();
-                  fetchCollectionDetails();
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: '2px solid var(--border)',
-                  borderRadius: '8px',
-                  backgroundColor: 'transparent',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = 'var(--background)';
-                  e.target.style.borderColor = 'var(--primary)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = 'transparent';
-                  e.target.style.borderColor = 'var(--border)';
-                }}
-              >
-                <Activity size={14} />
-                Refresh
-              </button>
-              
-              <button
-                onClick={onClose}
-                className="btn-primary"
-                style={{
-                  padding: '10px 20px',
-                  fontSize: '14px'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+         {/* Footer Actions */}
+         <div style={{
+           display: 'flex',
+           justifyContent: 'space-between',
+           alignItems: 'center',
+           marginTop: '32px',
+           paddingTop: '20px',
+           borderTop: '1px solid var(--border)'
+         }}>
+           <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+             Last updated: {formatDate(new Date().toISOString())}
+           </div>
+           
+           <div style={{ display: 'flex', gap: '12px' }}>
+             <button
+               onClick={() => {
+                 onRefresh && onRefresh();
+                 fetchCollectionDetails();
+               }}
+               style={{
+                 padding: '10px 20px',
+                 border: '2px solid var(--border)',
+                 borderRadius: '8px',
+                 backgroundColor: 'transparent',
+                 cursor: 'pointer',
+                 fontSize: '14px',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px',
+                 transition: 'all 0.2s'
+               }}
+               onMouseEnter={(e) => {
+                 e.target.style.backgroundColor = 'var(--background)';
+                 e.target.style.borderColor = 'var(--primary)';
+               }}
+               onMouseLeave={(e) => {
+                 e.target.style.backgroundColor = 'transparent';
+                 e.target.style.borderColor = 'var(--border)';
+               }}
+             >
+               <Activity size={14} />
+               Refresh
+             </button>
+             
+             <button
+               onClick={onClose}
+               className="btn-primary"
+               style={{
+                 padding: '10px 20px',
+                 fontSize: '14px'
+               }}
+             >
+               Close
+             </button>
+           </div>
+         </div>
+       </div>
+     )}
 
-      {/* Add CSS for animations */}
-      <style jsx>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-      `}</style>
-    </Modal>
-  );
+     {/* Document Delete Confirmation Modal */}
+     {showDeleteDocumentModal && documentToDelete && (
+       <div style={{
+         position: 'fixed',
+         top: 0,
+         left: 0,
+         right: 0,
+         bottom: 0,
+         backgroundColor: 'rgba(0, 0, 0, 0.7)',
+         display: 'flex',
+         alignItems: 'center',
+         justifyContent: 'center',
+         zIndex: 1100,
+         animation: 'fadeIn 0.2s ease-out'
+       }}>
+         <div style={{
+           backgroundColor: 'var(--surface)',
+           borderRadius: '20px',
+           padding: '32px',
+           maxWidth: '500px',
+           width: '90%',
+           boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+           border: '1px solid var(--border)',
+           animation: 'slideInScale 0.3s ease-out'
+         }}>
+           {/* Modal Header */}
+           <div style={{
+             display: 'flex',
+             alignItems: 'center',
+             gap: '16px',
+             marginBottom: '20px'
+           }}>
+             <div style={{
+               padding: '12px',
+               borderRadius: '12px',
+               backgroundColor: '#fee2e2',
+               color: 'var(--error)'
+             }}>
+               <FileText size={24} />
+             </div>
+             <div>
+               <h3 style={{
+                 margin: 0,
+                 fontSize: '20px',
+                 fontWeight: '600',
+                 color: 'var(--text-primary)'
+               }}>
+                 Remove Document?
+               </h3>
+               <p style={{
+                 margin: '4px 0 0 0',
+                 fontSize: '14px',
+                 color: 'var(--text-secondary)'
+               }}>
+                 Remove from this collection
+               </p>
+             </div>
+           </div>
+
+           {/* Modal Content */}
+           <div style={{
+             marginBottom: '28px',
+             padding: '20px',
+             backgroundColor: 'var(--background)',
+             borderRadius: '12px',
+             border: '1px solid var(--border)'
+           }}>
+             <div style={{
+               display: 'flex',
+               alignItems: 'center',
+               gap: '12px',
+               marginBottom: '16px'
+             }}>
+               <div style={{
+                 padding: '8px',
+                 borderRadius: '8px',
+                 backgroundColor: 'var(--primary)',
+                 color: 'white'
+               }}>
+                 <FileText size={16} />
+               </div>
+               <h4 style={{
+                 margin: 0,
+                 fontSize: '16px',
+                 fontWeight: '600',
+                 color: 'var(--text-primary)'
+               }}>
+                 {documentToDelete.title}
+               </h4>
+             </div>
+             
+             <p style={{
+               margin: '0 0 16px 0',
+               fontSize: '15px',
+               color: 'var(--text-primary)',
+               lineHeight: '1.5'
+             }}>
+               The documents along with its quizzes will be removed from this collection (not deleted permanently). Are you sure you want to proceed?
+             </p>
+             
+             <div style={{
+               display: 'flex',
+               gap: '16px',
+               fontSize: '14px',
+               color: 'var(--text-secondary)'
+             }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                 <FileText size={14} />
+                 {documentToDelete.pageCount} pages
+               </div>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                 <Calendar size={14} />
+                 Uploaded {formatDate(documentToDelete.uploadDate)}
+               </div>
+             </div>
+           </div>
+
+           {/* Modal Actions */}
+           <div style={{
+             display: 'flex',
+             gap: '12px',
+             justifyContent: 'flex-end'
+           }}>
+             <button
+               onClick={() => setShowDeleteDocumentModal(false)}
+               style={{
+                 padding: '12px 24px',
+                 backgroundColor: 'transparent',
+                 color: 'var(--text-secondary)',
+                 border: '2px solid var(--border)',
+                 borderRadius: '10px',
+                 cursor: 'pointer',
+                 fontSize: '14px',
+                 fontWeight: '500',
+                 transition: 'all 0.2s',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px'
+               }}
+               onMouseEnter={(e) => {
+                 e.target.style.backgroundColor = 'var(--background)';
+                 e.target.style.borderColor = 'var(--primary)';
+                 e.target.style.color = 'var(--primary)';
+               }}
+               onMouseLeave={(e) => {
+                 e.target.style.backgroundColor = 'transparent';
+                 e.target.style.borderColor = 'var(--border)';
+                 e.target.style.color = 'var(--text-secondary)';
+               }}
+             >
+               Cancel
+             </button>
+             
+             <button
+               onClick={confirmDeleteDocument}
+               style={{
+                 padding: '12px 24px',
+                 backgroundColor: 'var(--error)',
+                 color: 'white',
+                 border: 'none',
+                 borderRadius: '10px',
+                 cursor: 'pointer',
+                 fontSize: '14px',
+                 fontWeight: '500',
+                 transition: 'all 0.2s',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px'
+               }}
+               onMouseEnter={(e) => {
+                 e.target.style.backgroundColor = '#dc2626';
+                 e.target.style.transform = 'translateY(-1px)';
+                 e.target.style.boxShadow = '0 8px 25px rgba(239, 68, 68, 0.3)';
+               }}
+               onMouseLeave={(e) => {
+                 e.target.style.backgroundColor = 'var(--error)';
+                 e.target.style.transform = 'translateY(0)';
+                 e.target.style.boxShadow = 'none';
+               }}
+             >
+               <Trash2 size={14} />
+               Remove Document
+             </button>
+           </div>
+         </div>
+       </div>
+     )}
+
+     {/* Quiz Delete Confirmation Modal */}
+     {showDeleteQuizModal && quizToDelete && (
+       <div style={{
+         position: 'fixed',
+         top: 0,
+         left: 0,
+         right: 0,
+         bottom: 0,
+         backgroundColor: 'rgba(0, 0, 0, 0.7)',
+         display: 'flex',
+         alignItems: 'center',
+         justifyContent: 'center',
+         zIndex: 1100, // Higher than main modal
+         animation: 'fadeIn 0.2s ease-out'
+       }}>
+         <div style={{
+           backgroundColor: 'var(--surface)',
+           borderRadius: '20px',
+           padding: '32px',
+           maxWidth: '500px',
+           width: '90%',
+           boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+           border: '1px solid var(--border)',
+           animation: 'slideInScale 0.3s ease-out'
+         }}>
+           {/* Modal Header */}
+           <div style={{
+             display: 'flex',
+             alignItems: 'center',
+             gap: '16px',
+             marginBottom: '20px'
+           }}>
+             <div style={{
+               padding: '12px',
+               borderRadius: '12px',
+               backgroundColor: '#fee2e2',
+               color: 'var(--error)'
+             }}>
+               <Brain size={24} />
+             </div>
+             <div>
+               <h3 style={{
+                 margin: 0,
+                 fontSize: '20px',
+                 fontWeight: '600',
+                 color: 'var(--text-primary)'
+               }}>
+                 Delete Quiz?
+               </h3>
+               <p style={{
+                 margin: '4px 0 0 0',
+                 fontSize: '14px',
+                 color: 'var(--text-secondary)'
+               }}>
+                 This action cannot be undone
+               </p>
+             </div>
+           </div>
+
+           {/* Modal Content */}
+           <div style={{
+             marginBottom: '28px',
+             padding: '20px',
+             backgroundColor: 'var(--background)',
+             borderRadius: '12px',
+             border: '1px solid var(--border)'
+           }}>
+             <div style={{
+               display: 'flex',
+               alignItems: 'center',
+               gap: '12px',
+               marginBottom: '16px'
+             }}>
+               <div style={{
+                 padding: '8px',
+                 borderRadius: '8px',
+                 backgroundColor: 'var(--accent)',
+                 color: 'white'
+               }}>
+                 <Brain size={16} />
+               </div>
+               <h4 style={{
+                 margin: 0,
+                 fontSize: '16px',
+                 fontWeight: '600',
+                 color: 'var(--text-primary)'
+               }}>
+                 {quizToDelete.title}
+               </h4>
+             </div>
+             
+             <p style={{
+               margin: '0 0 16px 0',
+               fontSize: '15px',
+               color: 'var(--text-primary)',
+               lineHeight: '1.5'
+             }}>
+               Are you sure you want to delete this quiz? All associated progress and data will be permanently removed.
+             </p>
+             
+             <div style={{
+               display: 'flex',
+               gap: '16px',
+               fontSize: '14px',
+               color: 'var(--text-secondary)'
+             }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                 <FileText size={14} />
+                 {quizToDelete.questions?.length || 0} questions
+               </div>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                 <Calendar size={14} />
+                 Created {formatDate(quizToDelete.createdAt)}
+               </div>
+               {quizToDelete.microbitCompatible && (
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                   <Zap size={14} />
+                   Interactive
+                 </div>
+               )}
+             </div>
+           </div>
+
+           {/* Modal Actions */}
+           <div style={{
+             display: 'flex',
+             gap: '12px',
+             justifyContent: 'flex-end'
+           }}>
+             <button
+               onClick={() => setShowDeleteQuizModal(false)}
+               style={{
+                 padding: '12px 24px',
+                 backgroundColor: 'transparent',
+                 color: 'var(--text-secondary)',
+                 border: '2px solid var(--border)',
+                 borderRadius: '10px',
+                 cursor: 'pointer',
+                 fontSize: '14px',
+                 fontWeight: '500',
+                 transition: 'all 0.2s',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px'
+               }}
+               onMouseEnter={(e) => {
+                 e.target.style.backgroundColor = 'var(--background)';
+                 e.target.style.borderColor = 'var(--primary)';
+                 e.target.style.color = 'var(--primary)';
+               }}
+               onMouseLeave={(e) => {
+                 e.target.style.backgroundColor = 'transparent';
+                 e.target.style.borderColor = 'var(--border)';
+                 e.target.style.color = 'var(--text-secondary)';
+               }}
+             >
+               Cancel
+             </button>
+             
+             <button
+               onClick={confirmDeleteQuiz}
+               style={{
+                 padding: '12px 24px',
+                 backgroundColor: 'var(--error)',
+                 color: 'white',
+                 border: 'none',
+                 borderRadius: '10px',
+                 cursor: 'pointer',
+                 fontSize: '14px',
+                 fontWeight: '500',
+                 transition: 'all 0.2s',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px'
+               }}
+               onMouseEnter={(e) => {
+                 e.target.style.backgroundColor = '#dc2626';
+                 e.target.style.transform = 'translateY(-1px)';
+                 e.target.style.boxShadow = '0 8px 25px rgba(239, 68, 68, 0.3)';
+               }}
+               onMouseLeave={(e) => {
+                 e.target.style.backgroundColor = 'var(--error)';
+                 e.target.style.transform = 'translateY(0)';
+                 e.target.style.boxShadow = 'none';
+               }}
+             >
+               <Trash2 size={14} />
+               Delete Quiz
+             </button>
+           </div>
+         </div>
+       </div>
+     )}
+
+     <style jsx>{`
+       @keyframes spin {
+         from { transform: rotate(0deg); }
+         to { transform: rotate(360deg); }
+       }
+       
+       @keyframes fadeIn {
+         from {
+           opacity: 0;
+         }
+         to {
+           opacity: 1;
+         }
+       }
+       
+       @keyframes slideInScale {
+         from {
+           transform: translateY(-20px) scale(0.95);
+           opacity: 0;
+         }
+         to {
+           transform: translateY(0) scale(1);
+           opacity: 1;
+         }
+       }
+       
+       .animate-spin {
+         animation: spin 1s linear infinite;
+       }
+     `}</style>
+   </Modal>
+ );
 };
 
 export default CollectionDetailsModal;
