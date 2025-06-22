@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import microbitWebSocketService from './services/microbitWebSocket'; // ADD THIS
+import microbitWebSocketService from './services/microbitWebSocket';
+import PageTransition from './components/common/PageTransition'; // ADD THIS
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
@@ -13,16 +14,24 @@ import Quizzes from './pages/Quizzes';
 import { MicrobitProvider } from './context/MicrobitContext';
 import './styles/globals.css';
 
-// Protected Route component
+// Protected Route component with transitions
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
-  return user ? children : <Navigate to="/login" />;
+  return user ? (
+    <PageTransition>
+      {children}
+    </PageTransition>
+  ) : <Navigate to="/login" />;
 };
 
-// Auth Route component
+// Auth Route component with transitions
 const AuthRoute = ({ children }) => {
   const { user } = useAuth();
-  return user ? <Navigate to="/dashboard" /> : children;
+  return user ? <Navigate to="/dashboard" /> : (
+    <PageTransition>
+      {children}
+    </PageTransition>
+  );
 };
 
 function App() {
