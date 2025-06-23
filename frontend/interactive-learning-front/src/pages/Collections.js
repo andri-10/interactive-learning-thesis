@@ -508,7 +508,7 @@ const Collections = () => {
           </div>
         )}
       </div>
-    </div>
+``    </div>
   );
 };
 

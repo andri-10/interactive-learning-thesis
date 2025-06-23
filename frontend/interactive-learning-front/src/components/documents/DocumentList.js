@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import ViewQuizzesForDocument from '../quiz/ViewQuizzesForDocument';
 import QuizGenerationModal from '../quiz/QuizGenerationModal';
-import AddDocumentToCollectionModal from '../collections/AddDocumentToCollectionModal';
+import SelectCollectionModal from '../collections/SelectCollectionModal';
 import Toast from '../common/Toast';
 import Modal from '../common/Modal';
 import { 
@@ -29,14 +29,12 @@ const DocumentList = () => {
   const [error, setError] = useState('');
   const [generatingQuiz, setGeneratingQuiz] = useState(null);
   
-  // Modal states
   const [showQuizModal, setShowQuizModal] = useState(false);
-  const [showAddToCollectionModal, setShowAddToCollectionModal] = useState(false);
+  const [showSelectCollectionModal, setShowSelectCollectionModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState(null);
   
-  // Toast states
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -85,9 +83,9 @@ const DocumentList = () => {
     setShowQuizModal(true);
   };
 
-  const handleAddToCollection = (document) => {
+  const handleSelectCollection = (document) => {
     setSelectedDocument(document);
-    setShowAddToCollectionModal(true);
+    setShowSelectCollectionModal(true);
   };
 
   const generateQuiz = async (numberOfQuestions, quizTitle, questionType) => {
@@ -140,7 +138,7 @@ const DocumentList = () => {
 
   const handleDocumentAddedToCollection = () => {
     showToast('Document added to collection successfully!', 'success');
-    fetchDocuments(); // Refresh to show updated collection tags
+    fetchDocuments();
   };
 
   const formatFileSize = (bytes) => {
@@ -227,7 +225,6 @@ const DocumentList = () => {
 
   return (
     <div>
-      {/* Documents Table Header */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr auto',
@@ -245,7 +242,6 @@ const DocumentList = () => {
         <span>Actions</span>
       </div>
 
-      {/* Documents List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {documents.map((document) => {
           const collectionName = getCollectionName(document.collectionId);
@@ -276,9 +272,7 @@ const DocumentList = () => {
                 padding: '20px',
                 alignItems: 'flex-start'
               }}>
-                {/* Document Info Section */}
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-                  {/* Document Icon */}
                   <div style={{
                     padding: '12px',
                     borderRadius: '10px',
@@ -292,9 +286,7 @@ const DocumentList = () => {
                     <FileIcon size={20} />
                   </div>
 
-                  {/* Document Details */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Title and Collection Tag */}
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -330,7 +322,6 @@ const DocumentList = () => {
                       )}
                     </div>
                     
-                    {/* Description */}
                     {document.description && (
                       <p style={{ 
                         color: 'var(--text-secondary)', 
@@ -343,7 +334,6 @@ const DocumentList = () => {
                       </p>
                     )}
                     
-                    {/* Document Metadata */}
                     <div style={{ 
                       display: 'flex', 
                       gap: '20px', 
@@ -366,7 +356,6 @@ const DocumentList = () => {
                       </span>
                     </div>
 
-                    {/* Associated Quizzes */}
                     <div style={{ marginTop: '16px' }}>
                       <ViewQuizzesForDocument 
                         documentId={document.id} 
@@ -376,7 +365,6 @@ const DocumentList = () => {
                   </div>
                 </div>
 
-                {/* Actions Section */}
                 <div style={{ 
                   display: 'flex', 
                   flexDirection: 'column',
@@ -384,7 +372,6 @@ const DocumentList = () => {
                   alignItems: 'flex-end',
                   minWidth: '200px'
                 }}>
-                  {/* Primary Actions */}
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       onClick={() => handleGenerateQuiz(document)}
@@ -431,10 +418,9 @@ const DocumentList = () => {
                     </button>
                   </div>
 
-                  {/* Secondary Actions */}
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
-                      onClick={() => handleAddToCollection(document)}
+                      onClick={() => handleSelectCollection(document)}
                       disabled={generatingQuiz === document.id}
                       style={{
                         display: 'flex',
@@ -508,7 +494,6 @@ const DocumentList = () => {
         })}
       </div>
 
-      {/* Quiz Generation Modal */}
       <QuizGenerationModal
         isOpen={showQuizModal}
         onClose={() => {
@@ -519,18 +504,16 @@ const DocumentList = () => {
         documentTitle={selectedDocument?.title || ''}
       />
 
-      {/* Add to Collection Modal */}
-      <AddDocumentToCollectionModal
-        isOpen={showAddToCollectionModal}
+      <SelectCollectionModal
+        isOpen={showSelectCollectionModal}
         onClose={() => {
-          setShowAddToCollectionModal(false);
+          setShowSelectCollectionModal(false);
           setSelectedDocument(null);
         }}
         document={selectedDocument}
         onDocumentAdded={handleDocumentAddedToCollection}
       />
 
-      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => {
@@ -586,7 +569,6 @@ const DocumentList = () => {
         </div>
       </Modal>
 
-      {/* Toast Notifications */}
       <Toast
         message={toast.message}
         type={toast.type}
@@ -594,7 +576,6 @@ const DocumentList = () => {
         onClose={hideToast}
       />
 
-      {/* Add CSS for animations */}
       <style jsx>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
