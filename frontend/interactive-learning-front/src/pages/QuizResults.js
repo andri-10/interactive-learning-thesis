@@ -19,7 +19,8 @@ import {
   Share2,
   Download,
   ArrowLeft,
-  PartyPopper
+  PartyPopper,
+  AlertTriangle
 } from 'lucide-react';
 import Navigation from '../components/common/Navigation';
 import api from '../services/api';
@@ -32,16 +33,85 @@ const QuizResults = () => {
   const [loading, setLoading] = useState(true);
   const [showCelebration, setShowCelebration] = useState(false);
   const [scoreAnimated, setScoreAnimated] = useState(false);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (location.state) {
-      const { quiz: quizData, userAnswers } = location.state;
-      setQuiz(quizData);
-      calculateResults(quizData, userAnswers);
-    } else {
-      navigate('/documents');
+  console.log('=== QUIZ RESULTS USEEFFECT START ===');
+  
+  if (results !== null) {
+    console.log('Results already exist, skipping...');
+    return;
+  }
+  
+  const savedQuizData = sessionStorage.getItem('quizResultsData');
+  console.log('SessionStorage data:', savedQuizData ? 'Found' : 'Not found');
+  
+  if (savedQuizData) {
+    try {
+      const parsedData = JSON.parse(savedQuizData);
+      console.log('Parsed sessionStorage data:', parsedData);
+      
+      if (parsedData.quiz && 
+          parsedData.quiz.questions && 
+          Array.isArray(parsedData.quiz.questions) && 
+          parsedData.quiz.questions.length > 0 && 
+          parsedData.userAnswers && 
+          typeof parsedData.userAnswers === 'object') {
+        
+        console.log('✅ SessionStorage data is valid');
+        setQuiz(parsedData.quiz);
+        setTimeElapsed(parsedData.timeElapsed || 0);
+        calculateResults(parsedData.quiz, parsedData.userAnswers);
+        
+        setTimeout(() => {
+          sessionStorage.removeItem('quizResultsData');
+          console.log('🗑️ Removed sessionStorage data');
+        }, 5000);
+        
+        return;
+      } else {
+        console.log('❌ SessionStorage data is invalid');
+      }
+    } catch (error) {
+      console.error('Error parsing sessionStorage data:', error);
     }
-  }, [location.state, navigate]);
+  }
+
+  console.log('Trying location.state...');
+  if (location.state && location.state.quiz && location.state.userAnswers) {
+    const { quiz: quizData, userAnswers, timeElapsed: elapsed } = location.state;
+    console.log('Location.state data found');
+    
+    if (quizData.questions && Array.isArray(quizData.questions) && quizData.questions.length > 0) {
+      console.log('✅ Location.state data is valid');
+      setQuiz(quizData);
+      setTimeElapsed(elapsed || 0);
+      calculateResults(quizData, userAnswers);
+      return;
+    }
+  }
+  
+  console.log('❌ No valid quiz data found');
+  setError('No quiz results data found. Please retake the quiz.');
+  setLoading(false);
+  
+  console.log('Current pathname:', window.location.pathname);
+  if (window.location.pathname === '/quiz-results') {
+    console.log('Setting up redirect timer...');
+    const redirectTimer = setTimeout(() => {
+      console.log('🧭 Redirecting to quizzes...');
+      navigate('/quizzes', { replace: true });
+    }, 5000);
+    
+    return () => {
+      console.log('Clearing redirect timer');
+      clearTimeout(redirectTimer);
+    };
+  }
+  
+  console.log('=== QUIZ RESULTS USEEFFECT END ===');
+}, [location.state, navigate, results]);
 
   useEffect(() => {
     if (results && results.score >= 80) {
@@ -49,41 +119,52 @@ const QuizResults = () => {
       setTimeout(() => setShowCelebration(false), 3000);
     }
     
-    // Animate score after a short delay
     setTimeout(() => setScoreAnimated(true), 500);
   }, [results]);
 
   const calculateResults = (quizData, userAnswers) => {
-    let correctAnswers = 0;
-    const questionResults = [];
-
-    quizData.questions.forEach((question) => {
-      const userAnswer = userAnswers[question.id];
-      const isCorrect = userAnswer === question.correctOptionIndex;
-      
-      if (isCorrect) {
-        correctAnswers++;
+    try {
+      if (!quizData?.questions || !Array.isArray(quizData.questions)) {
+        throw new Error('Invalid quiz data structure');
       }
 
-      questionResults.push({
-        question: question.questionText,
-        userAnswer: userAnswer !== undefined ? question.options[userAnswer] : 'Not answered',
-        correctAnswer: question.options[question.correctOptionIndex],
-        isCorrect: isCorrect,
-        explanation: question.explanation
-      });
-    });
+      let correctAnswers = 0;
+      const questionResults = [];
 
-    const score = Math.round((correctAnswers / quizData.questions.length) * 100);
-    
-    setResults({
-      score: score,
-      correctAnswers: correctAnswers,
-      totalQuestions: quizData.questions.length,
-      questionResults: questionResults
-    });
-    
-    setLoading(false);
+      quizData.questions.forEach((question, index) => {
+        const userAnswer = userAnswers[question.id];
+        const isCorrect = userAnswer !== undefined && userAnswer === question.correctOptionIndex;
+        
+        if (isCorrect) {
+          correctAnswers++;
+        }
+
+        questionResults.push({
+          question: question.questionText,
+          userAnswer: userAnswer !== undefined ? question.options[userAnswer] : 'Not answered',
+          correctAnswer: question.options[question.correctOptionIndex],
+          isCorrect: isCorrect,
+          explanation: question.explanation || 'No explanation provided'
+        });
+      });
+
+      const score = Math.round((correctAnswers / quizData.questions.length) * 100);
+      
+      const calculatedResults = {
+        score: score,
+        correctAnswers: correctAnswers,
+        totalQuestions: quizData.questions.length,
+        questionResults: questionResults
+      };
+      
+      setResults(calculatedResults);
+      setLoading(false);
+      
+    } catch (error) {
+      console.error('Error calculating results:', error);
+      setError('Error calculating quiz results');
+      setLoading(false);
+    }
   };
 
   const getScoreColor = (score) => {
@@ -111,21 +192,52 @@ const QuizResults = () => {
   };
 
   const retakeQuiz = () => {
-    navigate(`/quiz/${quiz.id}`);
+    if (quiz?.id) {
+      navigate(`/quiz/${quiz.id}`);
+    } else {
+      navigate('/quizzes');
+    }
+  };
+
+  const goToQuizzes = () => {
+    navigate('/quizzes');
   };
 
   const goToDocuments = () => {
     navigate('/documents');
   };
 
-  const shareResults = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: `Quiz Results: ${quiz?.title}`,
-        text: `I scored ${results.score}% on "${quiz?.title}" quiz!`,
-        url: window.location.href
-      });
+  const shareResults = async () => {
+    const shareData = {
+      title: `Quiz Results: ${quiz?.title || 'Quiz'}`,
+      text: `I scored ${results?.score || 0}% on the "${quiz?.title || 'Quiz'}" quiz!`,
+      url: window.location.href
+    };
+
+    try {
+      if (navigator.share && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(
+          `${shareData.text}\n\nTime taken: ${formatTime(timeElapsed)}\nCorrect answers: ${results?.correctAnswers}/${results?.totalQuestions}`
+        );
+        alert('Results copied to clipboard!');
+      }
+    } catch (error) {
+      try {
+        await navigator.clipboard.writeText(`I scored ${results?.score || 0}% on "${quiz?.title || 'Quiz'}"!`);
+        alert('Results copied to clipboard!');
+      } catch (clipboardError) {
+        console.error('Clipboard access failed:', clipboardError);
+      }
     }
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || seconds <= 0) return '0:00';
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (loading) {
@@ -156,13 +268,78 @@ const QuizResults = () => {
     );
   }
 
+  if (error || !results || !quiz) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)' }}>
+        <Navigation />
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: 'calc(100vh - 64px)',
+          flexDirection: 'column',
+          gap: '20px',
+          textAlign: 'center',
+          padding: '20px'
+        }}>
+          <AlertTriangle size={64} style={{ color: 'var(--error)' }} />
+          <div style={{ fontSize: '24px', color: 'var(--text-primary)', fontWeight: '600' }}>
+            Unable to Load Results
+          </div>
+          <div style={{ fontSize: '16px', color: 'var(--text-secondary)', marginBottom: '24px', maxWidth: '400px' }}>
+            {error || 'There was an issue loading your quiz results. This may happen if you navigated here directly or your session expired.'}
+          </div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button 
+              onClick={goToQuizzes}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: 'var(--primary)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <ArrowLeft size={16} />
+              Back to Quizzes
+            </button>
+            <button 
+              onClick={goToDocuments}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: 'transparent',
+                color: 'var(--text-primary)',
+                border: '2px solid var(--border)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <BookOpen size={16} />
+              Documents
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const ScoreIcon = getScoreIcon(results.score);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)' }}>
       <Navigation />
       
-      {/* Celebration Animation */}
       {showCelebration && (
         <div style={{
           position: 'fixed',
@@ -191,9 +368,8 @@ const QuizResults = () => {
         padding: '30px 20px',
         paddingBottom: '40px'
       }}>
-        {/* Back Button */}
         <button
-          onClick={() => navigate(-1)}
+          onClick={goToQuizzes}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -218,10 +394,9 @@ const QuizResults = () => {
           }}
         >
           <ArrowLeft size={16} />
-          Back
+          Back to Quizzes
         </button>
 
-        {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <h1 style={{ 
             color: 'var(--text-primary)', 
@@ -241,11 +416,10 @@ const QuizResults = () => {
             fontSize: '20px',
             margin: 0
           }}>
-            {quiz?.title}
+            {quiz?.title || 'Quiz Complete'}
           </h2>
         </div>
 
-        {/* Score Card */}
         <div style={{
           backgroundColor: 'var(--surface)',
           borderRadius: '24px',
@@ -258,7 +432,6 @@ const QuizResults = () => {
           position: 'relative',
           overflow: 'hidden'
         }}>
-          {/* Background Pattern */}
           <div style={{
             position: 'absolute',
             top: 0,
@@ -272,7 +445,6 @@ const QuizResults = () => {
           }} />
 
           <div style={{ position: 'relative', zIndex: 1 }}>
-            {/* Score Icon */}
             <div style={{ 
               marginBottom: '30px',
               display: 'flex',
@@ -290,7 +462,6 @@ const QuizResults = () => {
               </div>
             </div>
 
-            {/* Score */}
             <div style={{ 
               fontSize: '64px', 
               fontWeight: 'bold', 
@@ -303,7 +474,6 @@ const QuizResults = () => {
               {results.score}%
             </div>
 
-            {/* Performance Message */}
             <div style={{ 
               fontSize: '20px', 
               color: 'var(--text-primary)', 
@@ -313,16 +483,19 @@ const QuizResults = () => {
               {getPerformanceMessage(results.score)}
             </div>
 
-            {/* Stats */}
             <div style={{ 
               fontSize: '16px', 
               color: 'var(--text-secondary)', 
               marginBottom: '40px'
             }}>
               You answered {results.correctAnswers} out of {results.totalQuestions} questions correctly
+              {timeElapsed > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  Time taken: {formatTime(timeElapsed)}
+                </div>
+              )}
             </div>
 
-            {/* Quick Stats */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
@@ -373,9 +546,25 @@ const QuizResults = () => {
                   Accuracy
                 </div>
               </div>
+
+              {timeElapsed > 0 && (
+                <div style={{
+                  padding: '16px',
+                  backgroundColor: 'var(--background)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border)'
+                }}>
+                  <Clock size={24} style={{ color: 'var(--secondary)', marginBottom: '8px' }} />
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                    {formatTime(timeElapsed)}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Duration
+                  </div>
+                </div>
+              )}
             </div>
             
-            {/* Action Buttons */}
             <div style={{ 
               display: 'flex', 
               gap: '16px', 
@@ -469,7 +658,6 @@ const QuizResults = () => {
           </div>
         </div>
 
-        {/* Detailed Results */}
         <div style={{
           backgroundColor: 'var(--surface)',
           borderRadius: '20px',
@@ -524,7 +712,6 @@ const QuizResults = () => {
               e.currentTarget.style.boxShadow = 'none';
             }}
             >
-              {/* Question Header */}
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
@@ -563,7 +750,6 @@ const QuizResults = () => {
                 </div>
               </div>
               
-              {/* Question Text */}
               <p style={{ 
                 marginBottom: '16px', 
                 fontSize: '16px', 
@@ -574,11 +760,10 @@ const QuizResults = () => {
                 {result.question}
               </p>
               
-              {/* Answers */}
               <div style={{ 
                 display: 'grid',
                 gap: '12px',
-                marginBottom: result.explanation ? '16px' : '0'
+                marginBottom: result.explanation && result.explanation !== 'No explanation provided' ? '16px' : '0'
               }}>
                 <div style={{
                   padding: '12px 16px',
@@ -615,8 +800,7 @@ const QuizResults = () => {
                 )}
               </div>
               
-              {/* Explanation */}
-              {result.explanation && (
+              {result.explanation && result.explanation !== 'No explanation provided' && (
                 <div style={{
                   padding: '16px',
                   backgroundColor: 'var(--primary)',
@@ -628,7 +812,6 @@ const QuizResults = () => {
                   alignItems: 'flex-start',
                   gap: '12px'
                 }}>
-                  <Lightbulb size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
                     <strong>Explanation:</strong> {result.explanation}
                   </div>
@@ -639,7 +822,6 @@ const QuizResults = () => {
         </div>
       </div>
 
-      {/* CSS for animations */}
       <style jsx>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }

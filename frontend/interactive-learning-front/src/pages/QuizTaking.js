@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
 import { useMicrobit } from '../context/MicrobitContext';
 import { 
@@ -28,6 +28,14 @@ import {
 } from 'lucide-react';
 
 const QuizTaking = () => {
+  const location = useLocation();
+
+  if (!location.pathname.startsWith('/quiz/')) {
+    console.log('Not on quiz route, skipping component render');
+    return null;
+  }
+
+
   const { quizId } = useParams();
   const navigate = useNavigate();
   const [quiz, setQuiz] = useState(null);
@@ -39,11 +47,11 @@ const QuizTaking = () => {
   const [microbitConnected, setMicrobitConnected] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
   
   const { lastMovement, lastButton } = useMicrobit();
 
-  // Timer for tracking quiz duration
-  useEffect(() => {
+   useEffect(() => {
     const timer = setInterval(() => {
       setTimeElapsed(prev => prev + 1);
     }, 1000);
@@ -52,11 +60,16 @@ const QuizTaking = () => {
   }, []);
 
   useEffect(() => {
+    if (!quizId || quizId === 'undefined' || isNaN(parseInt(quizId))) {
+      console.error('Invalid quiz ID:', quizId);
+      navigate('/quizzes', { replace: true });
+      return;
+    }
+    
     fetchQuiz();
     checkMicrobitConnection();
-  }, [quizId]);
+  }, [quizId, navigate]);
 
-  // Handle micro:bit movements when in micro:bit mode
   useEffect(() => {
     if (microbitMode && lastMovement.movement && quiz && quiz.questions[currentQuestionIndex] && lastMovement.timestamp) {
       const movementTime = new Date(lastMovement.timestamp).getTime();
@@ -68,7 +81,6 @@ const QuizTaking = () => {
     }
   }, [lastMovement, microbitMode, currentQuestionIndex, quiz]);
 
-  // Handle micro:bit button presses for navigation
   useEffect(() => {
     if (microbitMode && lastButton.button && lastButton.timestamp) {
       const buttonTime = new Date(lastButton.timestamp).getTime();
@@ -80,17 +92,19 @@ const QuizTaking = () => {
     }
   }, [lastButton, microbitMode]);
 
-  const fetchQuiz = async () => {
-    try {
-      const response = await api.get(`/quizzes/${quizId}`);
-      setQuiz(response.data);
-    } catch (error) {
-      setError('Failed to load quiz');
-      console.error('Error fetching quiz:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchQuiz = async () => {
+      try {
+        console.log('Fetching quiz with ID:', quizId);
+        const response = await api.get(`/quizzes/${quizId}`);
+        console.log('Quiz data received:', response.data);
+        setQuiz(response.data);
+      } catch (error) {
+        console.error('Error fetching quiz:', error);
+        setError('Failed to load quiz');
+      } finally {
+        setLoading(false);
+      }
+    };
 
   const checkMicrobitConnection = async () => {
     try {
@@ -192,10 +206,11 @@ const QuizTaking = () => {
   };
 
   const handleAnswer = (questionId, answerIndex) => {
-    setUserAnswers({
-      ...userAnswers,
+    console.log('Setting answer:', { questionId, answerIndex });
+    setUserAnswers(prev => ({
+      ...prev,
       [questionId]: answerIndex
-    });
+    }));
   };
 
   const goToNext = () => {
@@ -210,17 +225,88 @@ const QuizTaking = () => {
     }
   };
 
-  const finishQuiz = async () => {
-    if (microbitMode) {
-      await stopMicrobitMode();
+   const finishQuiz = async () => {
+    console.log('=== FINISH QUIZ DEBUG START ===');
+    
+    if (isFinishing) {
+      console.log('❌ Already finishing, preventing double click');
+      return;
     }
     
-    navigate('/quiz-results', {
-      state: {
-        quiz: quiz,
-        userAnswers: userAnswers
+    setIsFinishing(true);
+    
+    try {
+      if (!quiz?.questions?.length) {
+        throw new Error('No valid quiz data found');
       }
-    });
+      
+      console.log('✅ Quiz validation passed');
+      
+      if (microbitMode) {
+        console.log('🎮 Stopping microbit mode...');
+        await stopMicrobitMode();
+      }
+      
+      const resultsPayload = {
+        quiz: {
+          id: quiz.id || quizId,
+          title: quiz.title || 'Untitled Quiz',
+          questions: quiz.questions,
+          microbitCompatible: quiz.microbitCompatible || false
+        },
+        userAnswers: userAnswers,
+        timeElapsed: timeElapsed,
+        timestamp: Date.now(),
+        debugInfo: {
+          originalQuizId: quizId,
+          questionsCount: quiz.questions.length,
+          answersCount: Object.keys(userAnswers).length
+        }
+      };
+      
+      try {
+        const jsonString = JSON.stringify(resultsPayload);
+        sessionStorage.setItem('quizResultsData', jsonString);
+        
+        const storedData = sessionStorage.getItem('quizResultsData');
+        if (!storedData) {
+          throw new Error('Failed to store data in sessionStorage');
+        }
+        
+        const verifyData = JSON.parse(storedData);
+        if (!verifyData.quiz?.questions?.length) {
+          throw new Error('Stored data is corrupted');
+        }
+        
+        console.log('✅ Data successfully stored and verified in sessionStorage');
+        
+      } catch (storageError) {
+        console.error('❌ SessionStorage error:', storageError);
+        throw new Error('Failed to store quiz results: ' + storageError.message);
+      }
+      
+      console.log('⏳ Waiting before navigation...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      console.log('🧭 Navigating to quiz results...');
+      navigate('/quiz-results', { 
+        replace: true,
+        state: {
+          fromQuiz: true,
+          timestamp: Date.now(),
+          quizId: quiz.id
+        }
+      });
+      
+      console.log('✅ Navigation completed');
+      
+    } catch (error) {
+      console.error('❌ FINISH QUIZ ERROR:', error);
+      setError(`Failed to finish quiz: ${error.message}`);
+      setIsFinishing(false);
+    }
+    
+    console.log('=== FINISH QUIZ DEBUG END ===');
   };
 
   const exitQuiz = async () => {
@@ -239,6 +325,35 @@ const QuizTaking = () => {
     const secs = seconds % 60;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
+
+
+  const cleanOptionText = (optionText, index) => {
+  const optionLetter = String.fromCharCode(65 + index); // A, B, C, D
+  
+  const patterns = [
+    new RegExp(`^${optionLetter}\\)\\s*`, 'i'), // "A) text"
+    new RegExp(`^${optionLetter}\\.\\s*`, 'i'), // "A. text"
+    new RegExp(`^${optionLetter}\\s+`, 'i'),    // "A text"
+    new RegExp(`^${optionLetter}-\\s*`, 'i'),   // "A- text"
+    new RegExp(`^${optionLetter}:\\s*`, 'i'),   // "A: text"
+  ];
+  
+  let cleanText = optionText;
+  
+  for (const pattern of patterns) {
+    if (pattern.test(cleanText)) {
+      cleanText = cleanText.replace(pattern, '');
+      break;
+    }
+  }
+  
+  if (cleanText.trim().toLowerCase() === optionLetter.toLowerCase()) {
+    cleanText = optionText;
+  }
+  
+  return cleanText.trim();
+};
+
 
   if (loading) {
     return (
@@ -618,80 +733,106 @@ const QuizTaking = () => {
             {currentQuestion.questionText}
           </h2>
 
-          {/* Answer Options */}
+          {/* Answer Options - COMPLETELY REDESIGNED TO PREVENT WHITE RECTANGLE */}
           <div style={{ flex: 1, marginBottom: '40px' }}>
             {currentQuestion.options.map((option, index) => {
               const isSelected = userAnswers[currentQuestion.id] === index;
               const optionLetter = String.fromCharCode(65 + index);
+              const cleanedOptionText = cleanOptionText(option, index); // Use the cleaning function
               
               return (
-                <button
-                  key={index}
-                  onClick={() => handleAnswer(currentQuestion.id, index)}
-                  disabled={microbitMode}
+                <div
+                  key={`${currentQuestion.id}-${index}`}
+                  onClick={() => !microbitMode && handleAnswer(currentQuestion.id, index)}
                   style={{
                     display: 'block',
                     width: '100%',
-                    padding: '20px 24px',
+                    padding: '0',
                     marginBottom: '16px',
-                    backgroundColor: isSelected ? 'var(--primary)' : 'var(--background)',
-                    color: isSelected ? 'white' : 'var(--text-primary)',
-                    border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
                     borderRadius: '16px',
                     cursor: microbitMode ? 'not-allowed' : 'pointer',
-                    fontSize: '18px',
-                    fontWeight: '500',
-                    textAlign: 'left',
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    position: 'relative',
                     opacity: microbitMode ? 0.7 : 1,
-                    background: isSelected 
-                      ? 'linear-gradient(135deg, var(--primary), var(--accent))' 
-                      : 'var(--background)'
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    font: 'inherit',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    textDecoration: 'none',
+                    boxSizing: 'border-box'
                   }}
                   onMouseEnter={(e) => {
-                    if (!isSelected && !microbitMode) {
-                      e.target.style.backgroundColor = 'var(--surface)';
-                      e.target.style.borderColor = 'var(--primary)';
+                    if (!microbitMode) {
                       e.target.style.transform = 'translateY(-2px)';
-                      e.target.style.boxShadow = '0 8px 25px rgba(99, 102, 241, 0.15)';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isSelected && !microbitMode) {
-                      e.target.style.backgroundColor = 'var(--background)';
-                      e.target.style.borderColor = 'var(--border)';
+                    if (!microbitMode) {
                       e.target.style.transform = 'translateY(0)';
-                      e.target.style.boxShadow = 'none';
                     }
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  {/* Inner content with proper styling */}
+                  <div style={{
+                    width: '100%',
+                    padding: '20px 24px',
+                    backgroundColor: isSelected ? '#6366f1' : '#ffffff',
+                    color: isSelected ? '#ffffff' : '#1f2937',
+                    border: `2px solid ${isSelected ? '#6366f1' : '#e5e7eb'}`,
+                    borderRadius: '16px',
+                    fontSize: '18px',
+                    fontWeight: '500',
+                    boxShadow: isSelected 
+                      ? '0 4px 12px rgba(99, 102, 241, 0.2)' 
+                      : '0 2px 4px rgba(0, 0, 0, 0.05)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    transition: 'all 0.3s ease',
+                    backgroundImage: 'none !important',
+                    backgroundClip: 'border-box'
+                  }}>
+                    {/* Option letter badge */}
                     <div style={{
                       width: '36px',
                       height: '36px',
                       borderRadius: '50%',
-                      backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : 'var(--primary)',
-                      color: isSelected ? 'white' : 'white',
+                      backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.2)' : '#6366f1',
+                      color: '#ffffff',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '16px',
                       fontWeight: 'bold',
-                      flexShrink: 0
+                      flexShrink: 0,
+                      border: isSelected ? '2px solid rgba(255, 255, 255, 0.3)' : 'none'
                     }}>
                       {optionLetter}
                     </div>
-                    <span style={{ flex: 1 }}>{option}</span>
+                    
+                    {/* Option text - NOW CLEANED */}
+                    <span style={{ 
+                      flex: 1,
+                      color: isSelected ? '#ffffff' : '#1f2937',
+                      fontWeight: '500',
+                      lineHeight: '1.4'
+                    }}>
+                      {cleanedOptionText}
+                    </span>
+                    
+                    {/* Check icon for selected */}
                     {isSelected && (
-                      <CheckCircle size={24} style={{ color: 'white' }} />
+                      <CheckCircle size={24} style={{ 
+                        color: '#ffffff',
+                        flexShrink: 0
+                      }} />
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
-
           {/* Navigation Controls */}
           <div style={{ 
             display: 'flex', 
@@ -756,8 +897,8 @@ const QuizTaking = () => {
               ) : isCurrentQuestionAnswered ? (
                 <div style={{ 
                   display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
+                  alignItems: 'center',
+                 gap: '8px',
                   color: 'var(--success)', 
                   fontWeight: '600' 
                 }}>
@@ -822,10 +963,7 @@ const QuizTaking = () => {
                   opacity: (!isCurrentQuestionAnswered && !microbitMode) ? 0.5 : 1,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  background: (!isCurrentQuestionAnswered && !microbitMode) 
-                    ? 'var(--border)' 
-                    : 'linear-gradient(135deg, var(--primary), var(--accent))'
+                  gap: '8px'
                 }}
                 onMouseEnter={(e) => {
                   if (isCurrentQuestionAnswered || microbitMode) {
