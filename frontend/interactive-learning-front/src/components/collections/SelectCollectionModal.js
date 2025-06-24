@@ -37,7 +37,37 @@ const SelectCollectionModal = ({ isOpen, onClose, document, onDocumentAdded }) =
       const response = await api.get('/collections');
       const collectionsData = response.data || [];
       
-      setCollections(collectionsData);
+      // Check each collection to see if it already contains this document
+      const availableCollections = await Promise.all(
+        collectionsData.map(async (collection) => {
+          try {
+            // Fetch documents in this collection
+            const documentsResponse = await api.get(`/documents/collection/${collection.id}`);
+            const documents = documentsResponse.data || [];
+            
+            // Check if current document is already in this collection
+            const containsDocument = documents.some(doc => doc.id === document?.id);
+            
+            return {
+              ...collection,
+              containsDocument,
+              documentCount: documents.length
+            };
+          } catch (error) {
+            console.error(`Error checking collection ${collection.id}:`, error);
+            return {
+              ...collection,
+              containsDocument: false,
+              documentCount: 0
+            };
+          }
+        })
+      );
+      
+      // Filter out collections that already contain this document
+      const filteredCollections = availableCollections.filter(collection => !collection.containsDocument);
+      
+      setCollections(filteredCollections);
     } catch (error) {
       console.error('Error fetching collections:', error);
       setError('Failed to load collections');
@@ -67,6 +97,15 @@ const SelectCollectionModal = ({ isOpen, onClose, document, onDocumentAdded }) =
       setError('Failed to add document to collection');
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleCollectionSelect = (collection) => {
+    // Toggle selection - if already selected, deselect it
+    if (selectedCollection?.id === collection.id) {
+      setSelectedCollection(null);
+    } else {
+      setSelectedCollection(collection);
     }
   };
 
@@ -174,7 +213,17 @@ const SelectCollectionModal = ({ isOpen, onClose, document, onDocumentAdded }) =
                 color: 'var(--text-secondary)'
               }}>
                 <Folder size={32} style={{ marginBottom: '12px' }} />
-                <p>{collections.length === 0 ? 'No collections available' : 'No collections found'}</p>
+                <p>
+                  {collections.length === 0 
+                    ? 'No available collections found. This document may already be in all existing collections.'
+                    : 'No collections found matching your search.'
+                  }
+                </p>
+                {collections.length === 0 && (
+                  <p style={{ fontSize: '14px', marginTop: '8px' }}>
+                    Check your existing collections or create a new one.
+                  </p>
+                )}
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm('')}
@@ -204,15 +253,15 @@ const SelectCollectionModal = ({ isOpen, onClose, document, onDocumentAdded }) =
                     cursor: 'pointer',
                     transition: 'background-color 0.2s'
                   }}
-                  onClick={() => setSelectedCollection(collection)}
+                  onClick={() => handleCollectionSelect(collection)}
                   onMouseEnter={(e) => {
                     if (selectedCollection?.id !== collection.id) {
-                      e.target.style.backgroundColor = '#f8fafc';
+                      e.currentTarget.style.backgroundColor = '#f8fafc';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (selectedCollection?.id !== collection.id) {
-                      e.target.style.backgroundColor = 'white';
+                      e.currentTarget.style.backgroundColor = 'white';
                     }
                   }}
                 >
@@ -231,7 +280,12 @@ const SelectCollectionModal = ({ isOpen, onClose, document, onDocumentAdded }) =
                         transition: 'all 0.2s'
                       }}>
                         {selectedCollection?.id === collection.id && (
-                          <CheckCircle size={12} style={{ color: 'white' }} />
+                          <div style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: 'white'
+                          }} />
                         )}
                       </div>
                     </div>
@@ -279,7 +333,6 @@ const SelectCollectionModal = ({ isOpen, onClose, document, onDocumentAdded }) =
                       }}>
                         <span>📚 {collection.documentCount || 0} documents</span>
                         <span>🧠 {collection.quizCount || 0} quizzes</span>
-                        <span>📅 Created {formatDate(collection.createdAt)}</span>
                       </div>
                     </div>
                   </div>

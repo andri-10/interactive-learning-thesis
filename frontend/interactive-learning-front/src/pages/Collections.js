@@ -15,8 +15,179 @@ import {
   Trash2, 
   Eye, 
   BookOpen,
-  BarChart3
+  BarChart3,
+  X
 } from 'lucide-react';
+
+// Delete Confirmation Modal Component
+const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, collectionName }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      padding: '20px'
+    }}>
+      <div style={{
+        backgroundColor: 'var(--surface)',
+        borderRadius: '16px',
+        padding: '32px',
+        maxWidth: '480px',
+        width: '100%',
+        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
+        border: '1px solid var(--border)',
+        position: 'relative'
+      }}>
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '8px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-secondary)',
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.backgroundColor = 'var(--background)';
+            e.target.style.color = 'var(--text-primary)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
+            e.target.style.color = 'var(--text-secondary)';
+          }}
+        >
+          <X size={20} />
+        </button>
+
+        {/* Icon */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginBottom: '24px'
+        }}>
+          <div style={{
+            padding: '16px',
+            borderRadius: '50%',
+            backgroundColor: '#fef2f2',
+            color: '#dc2626'
+          }}>
+            <AlertTriangle size={32} />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <h2 style={{
+            fontSize: '24px',
+            fontWeight: '600',
+            color: 'var(--text-primary)',
+            marginBottom: '12px',
+            margin: '0 0 12px 0'
+          }}>
+            Delete Collection
+          </h2>
+          <p style={{
+            fontSize: '16px',
+            color: 'var(--text-secondary)',
+            lineHeight: '1.5',
+            margin: '0 0 8px 0'
+          }}>
+            Are you sure you want to delete "{collectionName}"?
+          </p>
+          <p style={{
+            fontSize: '14px',
+            color: 'var(--text-secondary)',
+            lineHeight: '1.4',
+            margin: 0
+          }}>
+            This will not delete the documents or quizzes, just remove them from this collection.
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          justifyContent: 'flex-end'
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: 'var(--background)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = 'var(--surface)';
+              e.target.style.borderColor = 'var(--text-secondary)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'var(--background)';
+              e.target.style.borderColor = 'var(--border)';
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#dc2626',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#b91c1c';
+              e.target.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = '#dc2626';
+              e.target.style.transform = 'translateY(0)';
+            }}
+          >
+            <Trash2 size={16} />
+            Delete Collection
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Collections = () => {
   const navigate = useNavigate();
@@ -26,7 +197,9 @@ const Collections = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState(null);
+  const [collectionToDelete, setCollectionToDelete] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   useEffect(() => {
@@ -114,22 +287,33 @@ const Collections = () => {
     }
   };
 
-  const handleDeleteCollection = async (collectionId) => {
-    if (!window.confirm('Are you sure you want to delete this collection? This will not delete the documents or quizzes, just remove them from this collection.')) {
-      return;
-    }
+  const handleDeleteClick = (collection) => {
+    setCollectionToDelete(collection);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!collectionToDelete) return;
 
     try {
-      await api.delete(`/collections/${collectionId}`);
+      await api.delete(`/collections/${collectionToDelete.id}`);
       showToast('Collection deleted successfully', 'success');
       
       setCollections(prevCollections => 
-        prevCollections.filter(collection => collection.id !== collectionId)
+        prevCollections.filter(collection => collection.id !== collectionToDelete.id)
       );
+      
+      setShowDeleteModal(false);
+      setCollectionToDelete(null);
     } catch (error) {
       showToast('Failed to delete collection', 'error');
       console.error('Error deleting collection:', error);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setCollectionToDelete(null);
   };
 
   const handleAddDocuments = (collection) => {
@@ -142,7 +326,7 @@ const Collections = () => {
     setShowDetailsModal(true);
   };
 
- const handleDocumentAdded = () => {
+  const handleDocumentAdded = () => {
     fetchCollections();
     showToast('Documents and associated quizzes added to collection successfully!', 'success');
   };
@@ -436,7 +620,7 @@ const Collections = () => {
                   </button>
 
                   <button
-                    onClick={() => handleDeleteCollection(collection.id)}
+                    onClick={() => handleDeleteClick(collection)}
                     style={{
                       padding: '10px 12px',
                       backgroundColor: 'var(--error)',
@@ -488,6 +672,13 @@ const Collections = () => {
           onRefresh={fetchCollections}
         />
 
+        <DeleteConfirmationModal
+          isOpen={showDeleteModal}
+          onClose={handleDeleteCancel}
+          onConfirm={handleDeleteConfirm}
+          collectionName={collectionToDelete?.name || ''}
+        />
+
         {/* Toast Notifications */}
         {toast.show && (
           <div style={{
@@ -508,7 +699,7 @@ const Collections = () => {
           </div>
         )}
       </div>
-``    </div>
+    </div>
   );
 };
 
