@@ -19,8 +19,8 @@ FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
-# Copy built jar from build stage
-COPY --from=build /app/target/interactive-learning.jar .
+# Copy built jar from build stage (use wildcard to match any jar)
+COPY --from=build /app/target/*.jar app.jar
 
 # Create uploads directory
 RUN mkdir -p /app/uploads
@@ -29,4 +29,4 @@ RUN mkdir -p /app/uploads
 EXPOSE 8080
 
 # Run application
-CMD ["java", "-jar", "interactive-learning.jar"]
+CMD ["java", "-jar", "app.jar"]
