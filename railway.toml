@@ -1,0 +1,5 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+dockerfile = "backend/interactive-learning-back/Dockerfile"
