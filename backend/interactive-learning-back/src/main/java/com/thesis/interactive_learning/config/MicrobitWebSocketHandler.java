@@ -3,6 +3,8 @@ package com.thesis.interactive_learning.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thesis.interactive_learning.microbit.ButtonType;
 import com.thesis.interactive_learning.microbit.MovementType;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -19,6 +21,12 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Component
 public class MicrobitWebSocketHandler implements WebSocketHandler {
 
+    @Value("${app.websocket.max-sessions:100}")
+    private int maxSessions;
+
+    @Value("${app.websocket.heartbeat-interval:30000}")
+    private long heartbeatInterval;
+
     private static final Logger logger = LoggerFactory.getLogger(MicrobitWebSocketHandler.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -27,10 +35,17 @@ public class MicrobitWebSocketHandler implements WebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        sessions.add(session);
-        logger.info("WebSocket connection established: {}", session.getId());
+        if (sessions.size() >= maxSessions) {
+            logger.warn("Maximum WebSocket sessions reached ({}). Rejecting new connection: {}",
+                    maxSessions, session.getId());
+            session.close(CloseStatus.GOING_AWAY);
+            return;
+        }
 
-        // Send initial status
+        sessions.add(session);
+        logger.info("WebSocket connection established: {} (Total sessions: {})",
+                session.getId(), sessions.size());
+
         sendMicrobitStatus(session, false, "Disconnected", null);
     }
 
@@ -38,7 +53,6 @@ public class MicrobitWebSocketHandler implements WebSocketHandler {
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) throws Exception {
         logger.debug("Received WebSocket message: {}", message.getPayload());
 
-        // Handle ping/pong or other client messages if needed
         if ("ping".equals(message.getPayload())) {
             session.sendMessage(new TextMessage("pong"));
         }
@@ -86,7 +100,6 @@ public class MicrobitWebSocketHandler implements WebSocketHandler {
         broadcastToAllSessions(movementMessage);
     }
 
-    // Method to broadcast button press to all connected clients
     public void broadcastButtonPress(ButtonType button, String quizContext) {
         MicrobitButtonMessage buttonMessage = new MicrobitButtonMessage(
                 "button",
@@ -98,7 +111,7 @@ public class MicrobitWebSocketHandler implements WebSocketHandler {
         broadcastToAllSessions(buttonMessage);
     }
 
-    // Method to broadcast quiz state changes
+
     public void broadcastQuizState(Long quizId, String state, String currentQuestion) {
         MicrobitQuizStateMessage quizMessage = new MicrobitQuizStateMessage(
                 "quiz_state",
@@ -115,7 +128,6 @@ public class MicrobitWebSocketHandler implements WebSocketHandler {
         String messageJson = serializeMessage(message);
         if (messageJson == null) return;
 
-        // Remove disconnected sessions and send to active ones
         sessions.removeIf(session -> {
             try {
                 if (session.isOpen()) {
@@ -163,6 +175,26 @@ public class MicrobitWebSocketHandler implements WebSocketHandler {
 
     public int getActiveSessionCount() {
         return sessions.size();
+    }
+
+    @Scheduled(fixedDelayString = "${app.websocket.cleanup-interval:60000}")
+    public void cleanupSessions() {
+        int initialSize = sessions.size();
+        sessions.removeIf(session -> !session.isOpen());
+        int removedCount = initialSize - sessions.size();
+
+        if (removedCount > 0) {
+            logger.info("Cleaned up {} inactive WebSocket sessions. Active sessions: {}",
+                    removedCount, sessions.size());
+        }
+    }
+
+    public Map<String, Object> getConnectionMetrics() {
+        Map<String, Object> metrics = new ConcurrentHashMap<>();
+        metrics.put("activeSessions", sessions.size());
+        metrics.put("maxSessions", maxSessions);
+        metrics.put("timestamp", LocalDateTime.now().toString());
+        return metrics;
     }
 
 

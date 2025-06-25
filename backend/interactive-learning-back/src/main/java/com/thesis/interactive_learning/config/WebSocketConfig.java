@@ -1,5 +1,8 @@
+// Replace your WebSocketConfig.java with this production-ready version
+
 package com.thesis.interactive_learning.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -13,15 +16,24 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final MicrobitWebSocketHandler microbitWebSocketHandler;
 
+    @Value("${app.websocket.allowed-origins:http://localhost:3000}")
+    private String allowedOrigins;
+
     public WebSocketConfig(MicrobitWebSocketHandler microbitWebSocketHandler) {
         this.microbitWebSocketHandler = microbitWebSocketHandler;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        String[] origins = allowedOrigins.split(",");
+
+        for (int i = 0; i < origins.length; i++) {
+            origins[i] = origins[i].trim();
+        }
+
         registry.addHandler(microbitWebSocketHandler, "/ws/microbit")
-                .setAllowedOrigins("http://localhost:3000") // Allow React dev server
-                .withSockJS(); // Fallback for browsers that don't support WebSocket
+                .setAllowedOrigins(origins)
+                .withSockJS();
     }
 
     @Bean
