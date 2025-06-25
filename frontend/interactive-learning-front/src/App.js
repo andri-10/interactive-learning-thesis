@@ -2,7 +2,8 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import microbitWebSocketService from './services/microbitWebSocket';
-import PageTransition from './components/common/PageTransition'; // ADD THIS
+import PageTransition from './components/common/PageTransition';
+import LandingPage from './pages/LandingPage'; // ADD THIS IMPORT
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
@@ -34,6 +35,15 @@ const AuthRoute = ({ children }) => {
   );
 };
 
+// Landing Route component with transitions
+const LandingRoute = ({ children }) => {
+  return (
+    <PageTransition>
+      {children}
+    </PageTransition>
+  );
+};
+
 function App() {
   // Initialize WebSocket connection globally
   useEffect(() => {
@@ -52,7 +62,15 @@ function App() {
         <Router>
           <div className="App">
             <Routes>
-              <Route path="/" element={<Navigate to="/login" />} />
+              {/* Landing page as the home route */}
+              <Route 
+                path="/" 
+                element={
+                  <LandingRoute>
+                    <LandingPage />
+                  </LandingRoute>
+                } 
+              />
               <Route 
                 path="/login" 
                 element={

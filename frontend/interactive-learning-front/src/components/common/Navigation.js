@@ -41,7 +41,7 @@ const Navigation = () => {
       }}>
         {/* Logo/Brand */}
         <Link 
-          to="/dashboard"
+          to="/"
           style={{
             textDecoration: 'none',
             display: 'flex',
@@ -61,7 +61,6 @@ const Navigation = () => {
               objectFit: 'contain'
             }}
             onError={(e) => {
-              // Fallback to text if logo fails to load
               e.target.style.display = 'none';
               e.target.nextSibling.style.display = 'flex';
             }}
