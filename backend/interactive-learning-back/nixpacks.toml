@@ -1,0 +1,11 @@
+[phases.setup]
+cmds = ['chmod +x ./mvnw']
+
+[phases.build]
+cmds = ['./mvnw clean package -DskipTests -Pprod']
+
+[phases.start]
+cmd = 'java -jar target/interactive-learning.jar'
+
+[variables]
+JAVA_VERSION = '17'
