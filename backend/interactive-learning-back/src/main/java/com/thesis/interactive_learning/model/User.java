@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -24,6 +27,23 @@ public class User {
 
     @Column(unique = true, nullable = false)
     private String email;
+
+    @Enumerated(EnumType.STRING)
+    private Role role = Role.USER;
+
+    public enum Role {
+        USER, ADMIN
+    }
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    @Enumerated(EnumType.STRING)
+    private UserStatus status = UserStatus.ENABLED;
+
+    public enum UserStatus {
+        ENABLED, DISABLED
+    }
 
     @Column(nullable = false)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY) // Hide password in JSON responses
