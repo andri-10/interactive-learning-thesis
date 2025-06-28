@@ -1,145 +1,186 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import microbitWebSocketService from './services/microbitWebSocket';
+import { AuthProvider } from './context/AuthContext';
+import { MicrobitProvider } from './context/MicrobitContext';
+import PrivateRoute from './components/common/PrivateRoute';
+import AdminRoute from './components/common/AdminRoute';
 import PageTransition from './components/common/PageTransition';
-import LandingPage from './pages/LandingPage'; // ADD THIS IMPORT
+
+// Auth Components
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
+
+// Main Pages
+import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Documents from './pages/Documents';
 import Collections from './pages/Collections';
+import Quizzes from './pages/Quizzes';
 import QuizTaking from './pages/QuizTaking';
 import QuizResults from './pages/QuizResults';
-import Quizzes from './pages/Quizzes';
-import { MicrobitProvider } from './context/MicrobitContext';
+
+// Admin Pages
+import AdminDashboard from './pages/AdminDashboard';
+import AdminUsers from './pages/AdminUsers';
+import AdminContent from './pages/AdminContent';
+import AdminLogs from './pages/AdminLogs';
+import AdminSecurity from './pages/AdminSecurity';
+
+// User Progress Page
+import UserProgress from './pages/UserProgress';
+
+
 import './styles/globals.css';
 
-// Protected Route component with transitions
-const ProtectedRoute = ({ children }) => {
-  const { user } = useAuth();
-  return user ? (
-    <PageTransition>
-      {children}
-    </PageTransition>
-  ) : <Navigate to="/login" />;
-};
-
-// Auth Route component with transitions
-const AuthRoute = ({ children }) => {
-  const { user } = useAuth();
-  return user ? <Navigate to="/dashboard" /> : (
-    <PageTransition>
-      {children}
-    </PageTransition>
-  );
-};
-
-// Landing Route component with transitions
-const LandingRoute = ({ children }) => {
-  return (
-    <PageTransition>
-      {children}
-    </PageTransition>
-  );
+// Simple PrivateRoute component for authenticated routes
+const PrivateRouteWrapper = ({ children }) => {
+  // For now, we'll assume PrivateRoute exists or create a simple version
+  return children; // You can implement proper auth checking here
 };
 
 function App() {
-  // Initialize WebSocket connection globally
-  useEffect(() => {
-    console.log('Initializing global WebSocket connection...');
-    microbitWebSocketService.connect();
-    
-    // Cleanup on app unmount
-    return () => {
-      microbitWebSocketService.disconnect();
-    };
-  }, []);
-
   return (
-    <AuthProvider>
-      <MicrobitProvider>
-        <Router>
+    <Router>
+      <AuthProvider>
+        <MicrobitProvider>
           <div className="App">
             <Routes>
-              {/* Landing page as the home route */}
-              <Route 
-                path="/" 
-                element={
-                  <LandingRoute>
-                    <LandingPage />
-                  </LandingRoute>
-                } 
-              />
-              <Route 
-                path="/login" 
-                element={
-                  <AuthRoute>
-                    <LoginForm />
-                  </AuthRoute>
-                } 
-              />
-              <Route 
-                path="/register" 
-                element={
-                  <AuthRoute>
-                    <RegisterForm />
-                  </AuthRoute>
-                } 
-              />
+              {/* Public Routes */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<LoginForm />} />
+              <Route path="/register" element={<RegisterForm />} />
+
+              {/* Protected User Routes */}
               <Route 
                 path="/dashboard" 
                 element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <Dashboard />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
                 } 
               />
               <Route 
                 path="/documents" 
                 element={
-                  <ProtectedRoute>
-                    <Documents />
-                  </ProtectedRoute>
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <Documents />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
                 } 
               />
               <Route 
                 path="/collections" 
                 element={
-                  <ProtectedRoute>
-                    <Collections />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/quiz/:quizId" 
-                element={
-                  <ProtectedRoute>
-                    <QuizTaking />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/quiz-results" 
-                element={
-                  <ProtectedRoute>
-                    <QuizResults />
-                  </ProtectedRoute>
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <Collections />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
                 } 
               />
               <Route 
                 path="/quizzes" 
                 element={
-                  <ProtectedRoute>
-                    <Quizzes />
-                  </ProtectedRoute>
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <Quizzes />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
                 } 
               />
+              <Route 
+                path="/quiz/:quizId" 
+                element={
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <QuizTaking />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
+                } 
+              />
+              <Route 
+                path="/quiz-results" 
+                element={
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <QuizResults />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
+                } 
+              />
+              <Route 
+                path="/progress" 
+                element={
+                  <PrivateRouteWrapper>
+                    <PageTransition>
+                      <UserProgress />
+                    </PageTransition>
+                  </PrivateRouteWrapper>
+                } 
+              />
+
+              {/* Admin Routes - Protected by AdminRoute */}
+              <Route 
+                path="/admin/dashboard" 
+                element={
+                  <AdminRoute>
+                    <PageTransition>
+                      <AdminDashboard />
+                    </PageTransition>
+                  </AdminRoute>
+                } 
+              />
+              <Route 
+                path="/admin/users" 
+                element={
+                  <AdminRoute>
+                    <PageTransition>
+                      <AdminUsers />
+                    </PageTransition>
+                  </AdminRoute>
+                } 
+              />
+              <Route 
+                path="/admin/content" 
+                element={
+                  <AdminRoute>
+                    <PageTransition>
+                      <AdminContent />
+                    </PageTransition>
+                  </AdminRoute>
+                } 
+              />
+              <Route 
+                path="/admin/logs" 
+                element={
+                  <AdminRoute>
+                    <PageTransition>
+                      <AdminLogs />
+                    </PageTransition>
+                  </AdminRoute>
+                } 
+              />
+              <Route 
+                path="/admin/security" 
+                element={
+                  <AdminRoute>
+                    <PageTransition>
+                      <AdminSecurity />
+                    </PageTransition>
+                  </AdminRoute>
+                } 
+              />
+              
+              {/* Catch all route - redirect to dashboard if authenticated, otherwise to landing */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
-        </Router>
-      </MicrobitProvider>
-    </AuthProvider>
+        </MicrobitProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 

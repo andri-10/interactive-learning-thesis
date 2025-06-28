@@ -19,7 +19,14 @@ export const AuthProvider = ({ children }) => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
     if (token && userData) {
-      setUser(JSON.parse(userData));
+      try {
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
     setLoading(false);
   }, []);
@@ -27,34 +34,62 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const response = await api.post('/auth/login', { username, password });
-      const { token } = response.data;
+      const { token, user: userInfo } = response.data;
+      
       localStorage.setItem('token', token);
       
-      // Get user info - we'll need to create a simple user object
-      // For now, let's use a basic approach
-      const userData = { username, id: 1 }; // We'll fix this properly later
+      
+      const userData = {
+        id: userInfo?.id || 1,
+        username: userInfo?.username || username,
+        email: userInfo?.email || '',
+        role: userInfo?.role || 'USER',
+        isAdmin: userInfo?.role === 'ADMIN' || userInfo?.isAdmin === true,
+        createdAt: userInfo?.createdAt || new Date().toISOString(),
+        lastLogin: new Date().toISOString()
+      };
+      
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
       
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data || 'Login failed' };
+      console.error('Login error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.response?.data || 'Login failed' 
+      };
     }
   };
 
   const register = async (userData) => {
     try {
       const response = await api.post('/auth/register', userData);
-      const { token } = response.data;
+      const { token, user: userInfo } = response.data;
+      
       localStorage.setItem('token', token);
       
-      const userInfo = { username: userData.username, id: 1 }; // We'll fix this later
-      localStorage.setItem('user', JSON.stringify(userInfo));
-      setUser(userInfo);
+      
+      const newUserData = {
+        id: userInfo?.id || 1,
+        username: userInfo?.username || userData.username,
+        email: userInfo?.email || userData.email,
+        role: userInfo?.role || 'USER',
+        isAdmin: userInfo?.role === 'ADMIN' || userInfo?.isAdmin === true,
+        createdAt: userInfo?.createdAt || new Date().toISOString(),
+        lastLogin: new Date().toISOString()
+      };
+      
+      localStorage.setItem('user', JSON.stringify(newUserData));
+      setUser(newUserData);
       
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data || 'Registration failed' };
+      console.error('Registration error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.response?.data || 'Registration failed' 
+      };
     }
   };
 
@@ -64,12 +99,31 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateUser = (newUserData) => {
+    const updatedUser = { ...user, ...newUserData };
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
+  
+  const isAdmin = () => {
+    return user?.role === 'ADMIN' || user?.isAdmin === true;
+  };
+
+  
+  const hasRole = (role) => {
+    return user?.role === role;
+  };
+
   const value = {
     user,
     login,
     register,
     logout,
     loading,
+    updateUser,
+    isAdmin,
+    hasRole,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
