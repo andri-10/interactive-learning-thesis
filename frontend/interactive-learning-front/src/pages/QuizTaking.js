@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useMicrobit } from '../context/MicrobitContext';
 import { 
   Brain, 
@@ -29,12 +30,15 @@ import {
 
 const QuizTaking = () => {
   const location = useLocation();
+  const { user } = useAuth(); // Added useAuth hook
+
+  console.log('Current user:', user);
+  console.log('Token in localStorage:', localStorage.getItem('token'));
 
   if (!location.pathname.startsWith('/quiz/')) {
     console.log('Not on quiz route, skipping component render');
     return null;
   }
-
 
   const { quizId } = useParams();
   const navigate = useNavigate();
@@ -179,7 +183,7 @@ const QuizTaking = () => {
 
   const startMicrobitMode = async () => {
     try {
-      const userId = 1;
+      const userId = user?.id || 1; // Use actual user ID
       const response = await api.post(`/microbit/quiz/${quizId}/start?userId=${userId}`);
       
       if (response.data) {
@@ -225,6 +229,70 @@ const QuizTaking = () => {
     }
   };
 
+  // FIXED: Added progress calculation and creation functions
+  const calculateQuizResults = () => {
+    if (!quiz?.questions?.length) {
+      throw new Error('No valid quiz data found');
+    }
+
+    let correctAnswers = 0;
+    
+    quiz.questions.forEach((question) => {
+      const userAnswer = userAnswers[question.id];
+      const isCorrect = userAnswer !== undefined && userAnswer === question.correctOptionIndex;
+      
+      if (isCorrect) {
+        correctAnswers++;
+      }
+    });
+
+    const score = Math.round((correctAnswers / quiz.questions.length) * 100);
+    
+    return {
+      score,
+      correctAnswers,
+      totalQuestions: quiz.questions.length,
+      timeElapsed
+    };
+  };
+
+  const createProgressRecord = async (results) => {
+  try {
+    console.log('=== PROGRESS CREATION DEBUG ===');
+    console.log('Current user:', user);
+    console.log('Token in localStorage:', localStorage.getItem('token'));
+    
+    // FIXED: Format the payload to match backend UserProgress entity expectations
+    const progressData = {
+      user: {
+        id: user?.id || 1  // Backend expects nested user object
+      },
+      quiz: {
+        id: parseInt(quizId)  // Backend expects nested quiz object  
+      },
+      score: results.score,
+      correctAnswers: results.correctAnswers,
+      totalQuestions: results.totalQuestions,
+      timeElapsed: results.timeElapsed,
+      completedAt: new Date().toISOString()
+    };
+
+    console.log('Progress data payload (FIXED FORMAT):', progressData);
+    console.log('Making POST request to /progress...');
+
+    const response = await api.post('/progress', progressData);
+    console.log('✅ Progress record created successfully!', response.data);
+    
+    return response.data;
+  } catch (error) {
+    console.error('❌ Failed to create progress record:', error);
+    console.error('Error response data:', error.response?.data);
+    
+    // Don't throw - continue to show results even if progress fails
+    console.warn('⚠️ Continuing without progress record...');
+  }
+};
+
    const finishQuiz = async () => {
     console.log('=== FINISH QUIZ DEBUG START ===');
     
@@ -246,6 +314,13 @@ const QuizTaking = () => {
         console.log('🎮 Stopping microbit mode...');
         await stopMicrobitMode();
       }
+
+      // FIXED: Calculate results and create progress record
+      const results = calculateQuizResults();
+      console.log('📊 Quiz results calculated:', results);
+
+      // FIXED: Create progress record in backend
+      await createProgressRecord(results);
       
       const resultsPayload = {
         quiz: {
@@ -326,7 +401,6 @@ const QuizTaking = () => {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-
   const cleanOptionText = (optionText, index) => {
   const optionLetter = String.fromCharCode(65 + index); // A, B, C, D
   
@@ -353,7 +427,6 @@ const QuizTaking = () => {
   
   return cleanText.trim();
 };
-
 
   if (loading) {
     return (
@@ -733,12 +806,12 @@ const QuizTaking = () => {
             {currentQuestion.questionText}
           </h2>
 
-          {/* Answer Options - COMPLETELY REDESIGNED TO PREVENT WHITE RECTANGLE */}
+          {/* Answer Options */}
           <div style={{ flex: 1, marginBottom: '40px' }}>
             {currentQuestion.options.map((option, index) => {
               const isSelected = userAnswers[currentQuestion.id] === index;
               const optionLetter = String.fromCharCode(65 + index);
-              const cleanedOptionText = cleanOptionText(option, index); // Use the cleaning function
+              const cleanedOptionText = cleanOptionText(option, index);
               
               return (
                 <div
@@ -773,7 +846,6 @@ const QuizTaking = () => {
                     }
                   }}
                 >
-                  {/* Inner content with proper styling */}
                   <div style={{
                     width: '100%',
                     padding: '20px 24px',
@@ -811,7 +883,7 @@ const QuizTaking = () => {
                       {optionLetter}
                     </div>
                     
-                    {/* Option text - NOW CLEANED */}
+                    {/* Option text */}
                     <span style={{ 
                       flex: 1,
                       color: isSelected ? '#ffffff' : '#1f2937',

@@ -1,5 +1,6 @@
 package com.thesis.interactive_learning.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,10 +18,12 @@ public class UserProgress {
 
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnoreProperties({"progress", "documents", "quizzes"})
     private User user;
 
     @ManyToOne
     @JoinColumn(name = "quiz_id", nullable = false)
+    @JsonIgnoreProperties({"progress", "questions", "user"})
     private Quiz quiz;
 
     @Column(nullable = false)
@@ -31,6 +34,9 @@ public class UserProgress {
 
     @Column(nullable = false)
     private Integer correctAnswers;
+
+    @Column
+    private Integer score;
 
     @Column
     private Long completionTimeSeconds;

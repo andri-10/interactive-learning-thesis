@@ -1,11 +1,14 @@
 package com.thesis.interactive_learning.controllers;
 
+import com.thesis.interactive_learning.model.User;
 import com.thesis.interactive_learning.model.UserProgress;
 import com.thesis.interactive_learning.security.UserContext;
 import com.thesis.interactive_learning.service.UserProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -159,6 +162,31 @@ public class UserProgressController {
             return ResponseEntity.ok(recentProgress);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/debug")
+    public ResponseEntity<?> debugCurrentUser() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            System.out.println("Authentication: " + auth);
+            System.out.println("Principal: " + auth.getPrincipal());
+            System.out.println("Is authenticated: " + auth.isAuthenticated());
+
+            User currentUser = userContext.getCurrentUser();
+            System.out.println("Current user: " + currentUser.getUsername() + " (ID: " + currentUser.getId() + ")");
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "userId", currentUser.getId(),
+                    "username", currentUser.getUsername(),
+                    "message", "Authentication working!"
+            ));
+        } catch (Exception e) {
+            System.out.println("Debug error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", e.getMessage()));
         }
     }

@@ -31,105 +31,25 @@ const UserProgress = () => {
   }, []);
 
   const fetchProgressData = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Fetch user progress data
-      const [dashboardRes, recentRes, statsRes] = await Promise.all([
-        api.get('/progress/dashboard'),
-        api.get('/progress/recent'),
-        api.get('/progress/stats')
-      ]);
-
-      setProgressData({
-        dashboard: dashboardRes.data,
-        recentActivity: recentRes.data?.content || recentRes.data || [],
-        stats: statsRes.data
-      });
-
-    } catch (error) {
-      console.error('Error fetching progress data:', error);
-      setError('Failed to load progress data');
-      
-      // Mock data for development
-      setProgressData({
-        dashboard: {
-          totalQuizzes: 24,
-          totalTime: 180, // minutes
-          averageScore: 78.5,
-          completionRate: 85.2,
-          streak: 5,
-          level: 'Intermediate',
-          totalDocuments: 15,
-          studyGoal: 30, // minutes per day
-          studyProgress: 75, // percentage of goal
-          achievements: 7,
-          weeklyProgress: [65, 72, 68, 85, 78, 82, 75], // Last 7 days scores
-          monthlyActivity: {
-            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-            quizzes: [8, 6, 5, 5],
-            time: [45, 35, 30, 25]
-          }
-        },
-        recentActivity: [
-          {
-            id: 1,
-            type: 'quiz',
-            title: 'Advanced Mathematics Quiz',
-            score: 85,
-            completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            duration: 15
-          },
-          {
-            id: 2,
-            type: 'document',
-            title: 'Physics Study Notes',
-            action: 'uploaded',
-            completedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 3,
-            type: 'quiz',
-            title: 'Chemistry Basics',
-            score: 92,
-            completedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            duration: 12
-          },
-          {
-            id: 4,
-            type: 'achievement',
-            title: 'Quiz Master',
-            description: 'Completed 20 quizzes',
-            completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 5,
-            type: 'quiz',
-            title: 'History Review',
-            score: 76,
-            completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            duration: 18
-          }
-        ],
-        stats: {
-          totalStudyTime: 180,
-          averageSessionTime: 25,
-          bestStreak: 8,
-          totalAchievements: 7,
-          accuracyTrend: [72, 75, 78, 80, 79, 82, 78], // Last 7 sessions
-          subjectPerformance: [
-            { subject: 'Mathematics', score: 85, count: 8 },
-            { subject: 'Science', score: 78, count: 6 },
-            { subject: 'History', score: 82, count: 5 },
-            { subject: 'Literature', score: 75, count: 5 }
-          ]
-        }
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    setError('');
+    
+    console.log('=== FRONTEND API DEBUG ===');
+    console.log('Token in localStorage:', localStorage.getItem('token'));
+    console.log('Making API calls...');
+    
+    // Test with a simple call first
+    console.log('Testing /api/progress...');
+    const testResponse = await api.get('/progress');
+    console.log('✅ /api/progress works:', testResponse.data);
+    
+    // Rest of your API calls...
+  } catch (error) {
+    console.error('❌ API Error:', error);
+    console.error('Error response:', error.response?.data);
+  }
+};
 
   const handleRefresh = async () => {
     setRefreshing(true);

@@ -25,9 +25,6 @@ import {
 const Navigation = () => {
   const { user, logout, isAdmin } = useAuth();
 
-  console.log('Navigation - user:', user);
-  console.log('Navigation - isAdmin():', isAdmin());
-
   const location = useLocation();
   const [showAdminMenu, setShowAdminMenu] = useState(false);
 

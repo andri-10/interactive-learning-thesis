@@ -33,6 +33,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
+                        .requestMatchers("/api/progress/debug").authenticated()
 
                         .requestMatchers("/api/microbit/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
