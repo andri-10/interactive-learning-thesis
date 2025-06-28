@@ -21,20 +21,6 @@ public class SecurityConfig {
     @Autowired
     private JwtRequestFilter jwtRequestFilter;
 
-//    @Bean
-//    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-//        http
-//                .csrf(AbstractHttpConfigurer::disable)
-//                .authorizeHttpRequests(auth -> auth
-//                        .anyRequest().permitAll()  // This allows all requests
-//                )
-//                .sessionManagement(session -> session
-//                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-//                )
-//                .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
-//
-//        return http.build();
-//    }
 
 
     @Bean
@@ -42,12 +28,12 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/public/**").permitAll()
-                        .requestMatchers("/api/test/**").permitAll()
-                        .requestMatchers("/api/microbit/**").permitAll()
-                        .requestMatchers("/ws/**").permitAll()
-                        .anyRequest().authenticated()
+//                        .requestMatchers("/api/auth/**").permitAll()
+//                        .requestMatchers("/api/public/**").permitAll()
+//                        .requestMatchers("/api/test/**").permitAll()
+//                        .requestMatchers("/api/microbit/**").permitAll()
+//                        .requestMatchers("/ws/**").permitAll()
+                        .anyRequest().permitAll()
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
