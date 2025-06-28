@@ -1,8 +1,7 @@
-// Replace your WebSocketConfig.java with this production-ready version
-
 package com.thesis.interactive_learning.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -33,14 +32,20 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
         registry.addHandler(microbitWebSocketHandler, "/ws/microbit")
                 .setAllowedOrigins(origins)
-                .withSockJS();
+                .withSockJS()
+                .setSessionCookieNeeded(false)
+                .setHeartbeatTime(25000)
+                .setDisconnectDelay(5000)
+                .setClientLibraryUrl("https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");
     }
 
     @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxTextMessageBufferSize(8192);
         container.setMaxBinaryMessageBufferSize(8192);
+        container.setMaxSessionIdleTimeout(60000L);
         return container;
     }
 }
