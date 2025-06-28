@@ -6,6 +6,8 @@ import com.thesis.interactive_learning.model.Quiz;
 import com.thesis.interactive_learning.security.UserContext;
 import com.thesis.interactive_learning.service.DocumentService;
 import com.thesis.interactive_learning.repository.QuizRepository;
+import com.thesis.interactive_learning.service.AuditLogService;
+import com.thesis.interactive_learning.model.AuditLog;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,9 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/documents")
 public class DocumentController {
+
+    @Autowired
+    private AuditLogService auditLogService;
 
     private final DocumentService documentService;
     private final QuizRepository quizRepository;
@@ -40,26 +45,18 @@ public class DocumentController {
             @RequestParam(value = "collectionId", required = false) Long collectionId) {
 
         try {
-            // Get current authenticated user instead of requiring userId parameter
             Long currentUserId = userContext.getCurrentUserId();
-
-            System.out.println("=== UPLOAD REQUEST RECEIVED ===");
-            System.out.println("File: " + file.getOriginalFilename());
-            System.out.println("Title: " + title);
-            System.out.println("Description: " + description);
-            System.out.println("Current User ID: " + currentUserId);
-            System.out.println("File size: " + file.getSize());
-            System.out.println("Collection ID: " + collectionId);
-
             Document document = documentService.uploadDocument(file, title, description, currentUserId, collectionId);
-            return new ResponseEntity<>(document, HttpStatus.CREATED);
 
+            auditLogService.logUserAction(AuditLog.LogAction.DOCUMENT_UPLOADED,
+                    "Document uploaded: '" + title + "' (" + file.getSize() + " bytes)");
+
+            return new ResponseEntity<>(document, HttpStatus.CREATED);
         } catch (IOException e) {
-            System.out.println("IOException during upload: " + e.getMessage());
+            auditLogService.logError("Document upload failed for '" + title + "': " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "File upload failed: " + e.getMessage()));
         } catch (RuntimeException e) {
-            System.out.println("RuntimeException during upload: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", e.getMessage()));
         }
@@ -157,14 +154,19 @@ public class DocumentController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteDocument(@PathVariable Long id) {
         try {
-            // Validate document ownership before deletion
             Document document = documentService.getDocumentById(id)
                     .orElseThrow(() -> new RuntimeException("Document not found"));
             userContext.validateDocumentOwnership(document);
 
+            String documentTitle = document.getTitle();
             documentService.deleteDocument(id);
+
+            auditLogService.log(AuditLog.LogLevel.INFO, AuditLog.LogAction.DOCUMENT_DELETED,
+                    "Document deleted: '" + documentTitle + "'", "Document", id);
+
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
+            auditLogService.logError("Document deletion failed for ID " + id + ": " + e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", e.getMessage()));
         }

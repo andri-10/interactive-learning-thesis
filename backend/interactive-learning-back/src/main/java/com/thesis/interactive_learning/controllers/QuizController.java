@@ -1,7 +1,9 @@
 package com.thesis.interactive_learning.controllers;
 
+import com.thesis.interactive_learning.model.AuditLog;
 import com.thesis.interactive_learning.model.Quiz;
 import com.thesis.interactive_learning.security.UserContext;
+import com.thesis.interactive_learning.service.AuditLogService;
 import com.thesis.interactive_learning.service.QuizService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,9 @@ public class QuizController {
     private final UserContext userContext;
 
     @Autowired
+    private AuditLogService auditLogService;
+
+    @Autowired
     public QuizController(QuizService quizService, UserContext userContext) {
         this.quizService = quizService;
         this.userContext = userContext;
@@ -27,15 +32,6 @@ public class QuizController {
     @PostMapping
     public ResponseEntity<?> createQuiz(@RequestBody Quiz quiz) {
         try {
-            // Get current authenticated user
-            Long currentUserId = userContext.getCurrentUserId();
-
-            System.out.println("=== CREATE QUIZ REQUEST ===");
-            System.out.println("Quiz title: " + quiz.getTitle());
-            System.out.println("Quiz description: " + quiz.getDescription());
-            System.out.println("Current User ID: " + currentUserId);
-
-            // Validate ownership of document and collection if provided
             if (quiz.getDocument() != null && quiz.getDocument().getId() != null) {
                 userContext.validateDocumentOwnership(quiz.getDocument());
             }
@@ -44,13 +40,16 @@ public class QuizController {
                 userContext.validateCollectionOwnership(quiz.getStudyCollection());
             }
 
-            // Clear ID for new quiz
             quiz.setId(null);
-
             Quiz savedQuiz = quizService.saveQuiz(quiz);
+
+            auditLogService.logUserAction(AuditLog.LogAction.QUIZ_CREATED,
+                    "Quiz created: '" + savedQuiz.getTitle() + "' with " +
+                            (savedQuiz.getQuestions() != null ? savedQuiz.getQuestions().size() : 0) + " questions");
+
             return new ResponseEntity<>(savedQuiz, HttpStatus.CREATED);
         } catch (RuntimeException e) {
-            System.out.println("ERROR creating quiz: " + e.getMessage());
+            auditLogService.logError("Quiz creation failed: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", e.getMessage()));
         }
@@ -152,11 +151,9 @@ public class QuizController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteQuiz(@PathVariable Long id) {
         try {
-            // Validate quiz ownership before deletion
             Quiz quiz = quizService.getQuizById(id)
                     .orElseThrow(() -> new RuntimeException("Quiz not found"));
 
-            // Validate user can delete this quiz
             if (quiz.getDocument() != null) {
                 userContext.validateDocumentOwnership(quiz.getDocument());
             } else if (quiz.getStudyCollection() != null) {
@@ -165,9 +162,15 @@ public class QuizController {
                 throw new RuntimeException("Cannot determine quiz ownership");
             }
 
+            String quizTitle = quiz.getTitle();
             quizService.deleteQuiz(id);
+
+            auditLogService.log(AuditLog.LogLevel.INFO, AuditLog.LogAction.QUIZ_DELETED,
+                    "Quiz deleted: '" + quizTitle + "'", "Quiz", id);
+
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
+            auditLogService.logError("Quiz deletion failed for ID " + id + ": " + e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", e.getMessage()));
         }

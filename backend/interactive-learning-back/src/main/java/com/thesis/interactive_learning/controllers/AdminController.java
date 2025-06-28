@@ -1,7 +1,10 @@
 package com.thesis.interactive_learning.controllers;
 
+import com.thesis.interactive_learning.model.AuditLog;
 import com.thesis.interactive_learning.security.UserContext;
 import com.thesis.interactive_learning.service.AdminService;
+import com.thesis.interactive_learning.service.AuditLogService;
+import com.thesis.interactive_learning.security.SecurityMonitoringService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,18 +17,22 @@ public class AdminController {
 
     private final AdminService adminService;
     private final UserContext userContext;
+    private final AuditLogService auditLogService;
+    private final SecurityMonitoringService securityMonitoringService;
 
     @Autowired
-    public AdminController(AdminService adminService, UserContext userContext) {
+    public AdminController(AdminService adminService, UserContext userContext, AuditLogService auditLogService, SecurityMonitoringService securityMonitoringService) {
         this.adminService = adminService;
         this.userContext = userContext;
+        this.auditLogService = auditLogService;
+        this.securityMonitoringService = securityMonitoringService;
     }
 
     @GetMapping("/dashboard")
     public ResponseEntity<?> getAdminDashboard() {
         try {
-            // Ensure current user is admin
             validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed dashboard");
 
             Map<String, Object> dashboard = adminService.getAdminDashboard();
             return ResponseEntity.ok(dashboard);
@@ -39,6 +46,7 @@ public class AdminController {
                                          @RequestParam(defaultValue = "20") int size) {
         try {
             validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed user list");
 
             Map<String, Object> users = adminService.getAllUsersWithPagination(page, size);
             return ResponseEntity.ok(users);
@@ -51,6 +59,8 @@ public class AdminController {
     public ResponseEntity<?> getUserDetails(@PathVariable Long userId) {
         try {
             validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS,
+                    "Admin accessed user details for user ID: " + userId);
 
             Map<String, Object> userDetails = adminService.getUserDetails(userId);
             return ResponseEntity.ok(userDetails);
@@ -66,80 +76,13 @@ public class AdminController {
             validateAdminAccess();
 
             boolean enabled = (Boolean) statusUpdate.get("enabled");
-            Map<String, Object> result = adminService.updateUserStatus(userId, enabled);
+            String reason = (String) statusUpdate.getOrDefault("reason", "Status changed by admin");
+
+            auditLogService.logAdminAction(AuditLog.LogAction.USER_STATUS_CHANGED,
+                    "Admin " + (enabled ? "enabled" : "disabled") + " user ID: " + userId + " - Reason: " + reason);
+
+            Map<String, Object> result = adminService.updateUserStatus(userId, enabled, reason);
             return ResponseEntity.ok(result);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/content/overview")
-    public ResponseEntity<?> getContentOverview() {
-        try {
-            validateAdminAccess();
-
-            Map<String, Object> overview = adminService.getContentOverview();
-            return ResponseEntity.ok(overview);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/analytics/platform")
-    public ResponseEntity<?> getPlatformAnalytics(@RequestParam(defaultValue = "30") int days) {
-        try {
-            validateAdminAccess();
-
-            Map<String, Object> analytics = adminService.getPlatformAnalytics(days);
-            return ResponseEntity.ok(analytics);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/analytics/users")
-    public ResponseEntity<?> getUserAnalytics() {
-        try {
-            validateAdminAccess();
-
-            Map<String, Object> analytics = adminService.getUserAnalytics();
-            return ResponseEntity.ok(analytics);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/content/popular")
-    public ResponseEntity<?> getPopularContent(@RequestParam(defaultValue = "10") int limit) {
-        try {
-            validateAdminAccess();
-
-            Map<String, Object> popular = adminService.getPopularContent(limit);
-            return ResponseEntity.ok(popular);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/system/stats")
-    public ResponseEntity<?> getSystemStats() {
-        try {
-            validateAdminAccess();
-
-            Map<String, Object> stats = adminService.getSystemStats();
-            return ResponseEntity.ok(stats);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/microbit/usage")
-    public ResponseEntity<?> getMicrobitUsage(@RequestParam(defaultValue = "7") int days) {
-        try {
-            validateAdminAccess();
-
-            Map<String, Object> usage = adminService.getMicrobitUsage(days);
-            return ResponseEntity.ok(usage);
         } catch (RuntimeException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         }
@@ -149,6 +92,8 @@ public class AdminController {
     public ResponseEntity<?> deleteAnyDocument(@PathVariable Long documentId) {
         try {
             validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.CONTENT_MODERATION,
+                    "Admin deleted document ID: " + documentId);
 
             Map<String, Object> result = adminService.deleteDocument(documentId);
             return ResponseEntity.ok(result);
@@ -161,6 +106,8 @@ public class AdminController {
     public ResponseEntity<?> deleteAnyQuiz(@PathVariable Long quizId) {
         try {
             validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.CONTENT_MODERATION,
+                    "Admin deleted quiz ID: " + quizId);
 
             Map<String, Object> result = adminService.deleteQuiz(quizId);
             return ResponseEntity.ok(result);
@@ -173,20 +120,126 @@ public class AdminController {
     public ResponseEntity<?> getRecentLogs(@RequestParam(defaultValue = "100") int limit) {
         try {
             validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed recent logs");
 
-            Map<String, Object> logs = adminService.getRecentSystemLogs(limit);
+            Map<String, Object> logs = auditLogService.getRecentLogs(limit);
             return ResponseEntity.ok(logs);
         } catch (RuntimeException e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         }
     }
 
-    private void validateAdminAccess() {
-        // This will be implemented once you show me your Role enum structure
-        // For now, we'll check if user has admin role
-        var currentUser = userContext.getCurrentUser();
+    @GetMapping("/logs/security")
+    public ResponseEntity<?> getSecurityLogs(@RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "50") int size) {
+        try {
+            validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed security logs");
 
-        // Assuming your Role enum has ADMIN value
+            Map<String, Object> logs = auditLogService.getSecurityLogs(page, size);
+            return ResponseEntity.ok(logs);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/logs/admin-actions")
+    public ResponseEntity<?> getAdminActionLogs(@RequestParam(defaultValue = "0") int page,
+                                                @RequestParam(defaultValue = "50") int size) {
+        try {
+            validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed admin action logs");
+
+            Map<String, Object> logs = auditLogService.getAdminActionLogs(page, size);
+            return ResponseEntity.ok(logs);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/logs/user/{userId}")
+    public ResponseEntity<?> getUserActivityLogs(@PathVariable Long userId,
+                                                 @RequestParam(defaultValue = "0") int page,
+                                                 @RequestParam(defaultValue = "50") int size) {
+        try {
+            validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS,
+                    "Admin accessed activity logs for user ID: " + userId);
+
+            Map<String, Object> logs = auditLogService.getUserLogs(userId, page, size);
+            return ResponseEntity.ok(logs);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+
+    @GetMapping("/security/dashboard")
+    public ResponseEntity<?> getSecurityDashboard() {
+        try {
+            validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed security dashboard");
+
+            Map<String, Object> dashboard = securityMonitoringService.getSecurityDashboard();
+            return ResponseEntity.ok(dashboard);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/security/locked-accounts")
+    public ResponseEntity<?> getLockedAccounts() {
+        try {
+            validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS, "Admin accessed locked accounts list");
+
+            return ResponseEntity.ok(securityMonitoringService.getLockedAccounts());
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/security/unlock/{userId}")
+    public ResponseEntity<?> unlockUserAccount(@PathVariable Long userId, @RequestBody Map<String, String> request) {
+        try {
+            validateAdminAccess();
+            String reason = request.getOrDefault("reason", "Account unlocked by admin");
+
+            securityMonitoringService.unlockUserAccount(userId, reason);
+            return ResponseEntity.ok(Map.of("message", "User account unlocked successfully", "userId", userId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/security/user/{userId}")
+    public ResponseEntity<?> getUserSecurityInfo(@PathVariable Long userId) {
+        try {
+            validateAdminAccess();
+            auditLogService.logAdminAction(AuditLog.LogAction.ADMIN_ACCESS,
+                    "Admin accessed security info for user ID: " + userId);
+
+            Map<String, Object> securityInfo = securityMonitoringService.getUserSecurityInfo(userId);
+            return ResponseEntity.ok(securityInfo);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/security/reset-attempts/{userId}")
+    public ResponseEntity<?> resetFailedAttempts(@PathVariable Long userId) {
+        try {
+            validateAdminAccess();
+
+            securityMonitoringService.resetFailedAttempts(userId);
+            return ResponseEntity.ok(Map.of("message", "Failed login attempts reset successfully", "userId", userId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private void validateAdminAccess() {
+        var currentUser = userContext.getCurrentUser();
         if (currentUser.getRole() == null || !currentUser.getRole().toString().equals("ADMIN")) {
             throw new RuntimeException("Admin access required");
         }

@@ -1,7 +1,9 @@
 package com.thesis.interactive_learning.controllers;
 
+import com.thesis.interactive_learning.model.AuditLog;
 import com.thesis.interactive_learning.model.StudyCollection;
 import com.thesis.interactive_learning.security.UserContext;
+import com.thesis.interactive_learning.service.AuditLogService;
 import com.thesis.interactive_learning.service.StudyCollectionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,9 @@ public class StudyCollectionController {
     private final UserContext userContext;
 
     @Autowired
+    private AuditLogService auditLogService;
+
+    @Autowired
     public StudyCollectionController(StudyCollectionService studyCollectionService, UserContext userContext) {
         this.studyCollectionService = studyCollectionService;
         this.userContext = userContext;
@@ -26,27 +31,18 @@ public class StudyCollectionController {
     @PostMapping
     public ResponseEntity<?> createCollection(@RequestBody StudyCollection collection) {
         try {
-            // Get current authenticated user and set it to the collection
             Long currentUserId = userContext.getCurrentUserId();
-
-            System.out.println("=== CREATE COLLECTION REQUEST ===");
-            System.out.println("Collection name: " + collection.getName());
-            System.out.println("Collection description: " + collection.getDescription());
-            System.out.println("Current User ID: " + currentUserId);
-
-            // Clear any user that might be set from the request body for security
             collection.setUser(null);
-            collection.setId(null); // Ensure this is a new collection
+            collection.setId(null);
 
             StudyCollection savedCollection = studyCollectionService.saveCollectionForUser(collection, currentUserId);
 
-            System.out.println("Collection created successfully with ID: " + savedCollection.getId());
-            System.out.println("Collection belongs to user: " + savedCollection.getUserId());
+            auditLogService.logUserAction(AuditLog.LogAction.COLLECTION_CREATED,
+                    "Collection created: '" + savedCollection.getName() + "'");
 
             return new ResponseEntity<>(savedCollection, HttpStatus.CREATED);
         } catch (Exception e) {
-            System.out.println("ERROR creating collection: " + e.getMessage());
-            e.printStackTrace();
+            auditLogService.logError("Collection creation failed: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Failed to create collection: " + e.getMessage()));
         }
@@ -113,14 +109,19 @@ public class StudyCollectionController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteCollection(@PathVariable Long id) {
         try {
-            // Validate collection ownership before deletion
             StudyCollection collection = studyCollectionService.getCollectionById(id)
                     .orElseThrow(() -> new RuntimeException("Collection not found"));
             userContext.validateCollectionOwnership(collection);
 
+            String collectionName = collection.getName();
             studyCollectionService.deleteCollection(id);
+
+            auditLogService.log(AuditLog.LogLevel.INFO, AuditLog.LogAction.COLLECTION_DELETED,
+                    "Collection deleted: '" + collectionName + "'", "Collection", id);
+
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
+            auditLogService.logError("Collection deletion failed for ID " + id + ": " + e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", e.getMessage()));
         }
