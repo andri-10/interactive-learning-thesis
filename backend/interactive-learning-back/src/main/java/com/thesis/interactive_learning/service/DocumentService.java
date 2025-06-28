@@ -10,17 +10,20 @@ import java.util.Optional;
 
 public interface DocumentService {
     Document saveDocument(Document document);
-    Document uploadDocument(MultipartFile file, String title, String description,Long userId, Long collectionId) throws IOException;
+    Document uploadDocument(MultipartFile file, String title, String description, Long userId, Long collectionId) throws IOException;
     Optional<Document> getDocumentById(Long id);
+
     List<Document> getAllDocuments();
     List<Document> getDocumentsByUserId(Long userId);
     List<Document> getDocumentsByCollectionId(Long collectionId);
+
+    List<Document> getDocumentsByCollectionIdAndUserId(Long collectionId, Long userId);
+    List<Document> getAvailableDocumentsByUserId(Long userId);
+
     void deleteDocument(Long id);
     String extractTextFromPdf(Long documentId) throws IOException;
-
     Map<String, Object> extractStructuredTextFromPdf(Long documentId) throws IOException;
     Map<String, Object> extractDocumentMetadata(Long documentId) throws IOException;
-
     Document updateDocumentCollection(Long documentId, Long collectionId);
     Document removeDocumentFromCollection(Long documentId);
 }

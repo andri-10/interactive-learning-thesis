@@ -35,7 +35,8 @@ public class DocumentServiceImpl implements DocumentService {
     private String uploadDir;
 
     @Autowired
-    public DocumentServiceImpl(DocumentRepository documentRepository, UserRepository userRepository, StudyCollectionRepository studyCollectionRepository, QuizRepository quizRepository) {
+    public DocumentServiceImpl(DocumentRepository documentRepository, UserRepository userRepository,
+                               StudyCollectionRepository studyCollectionRepository, QuizRepository quizRepository) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.studyCollectionRepository = studyCollectionRepository;
@@ -47,25 +48,22 @@ public class DocumentServiceImpl implements DocumentService {
         return documentRepository.save(document);
     }
 
-    private void ensureUploadDirectoryExists(String uploadPath) {
-        File uploadDir = new File(uploadPath).getParentFile();
-        if (!uploadDir.exists()) {
-            boolean created = uploadDir.mkdirs();
-            System.out.println("Upload directory created: " + created + " at " + uploadDir.getAbsolutePath());
-        }
-    }
-
     @Override
     public Document uploadDocument(MultipartFile file, String title, String description, Long userId, Long collectionId) throws IOException {
-
         System.out.println("Upload directory from config: " + uploadDir);
 
-        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User Not Found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User Not Found"));
 
         StudyCollection collection = null;
         if (collectionId != null) {
             collection = studyCollectionRepository.findById(collectionId)
                     .orElseThrow(() -> new RuntimeException("Collection not found"));
+
+            // Validate that the collection belongs to the same user
+            if (!collection.getUser().getId().equals(userId)) {
+                throw new RuntimeException("Access denied: Collection does not belong to the user");
+            }
         }
 
         // Create upload directory with absolute path
@@ -86,7 +84,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         // Save the file
         file.transferTo(filePath.toFile());
-
         System.out.println("File saved successfully!");
 
         // Extract page count from PDF
@@ -122,14 +119,41 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public List<Document> getDocumentsByUserId(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User Not Found"));
-
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User Not Found"));
         return documentRepository.findByUser(user);
     }
 
     @Override
     public List<Document> getDocumentsByCollectionId(Long collectionId) {
         return documentRepository.findByStudyCollectionId(collectionId);
+    }
+
+    @Override
+    public List<Document> getDocumentsByCollectionIdAndUserId(Long collectionId, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User Not Found"));
+
+        if (collectionId == null) {
+            return documentRepository.findByUserAndStudyCollectionIsNull(user);
+        } else {
+            // Validate collection belongs to user
+            StudyCollection collection = studyCollectionRepository.findById(collectionId)
+                    .orElseThrow(() -> new RuntimeException("Collection not found"));
+
+            if (!collection.getUser().getId().equals(userId)) {
+                throw new RuntimeException("Access denied: Collection does not belong to the user");
+            }
+
+            return documentRepository.findByUserAndStudyCollectionId(user, collectionId);
+        }
+    }
+
+    @Override
+    public List<Document> getAvailableDocumentsByUserId(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User Not Found"));
+        return documentRepository.findByUserAndStudyCollectionIsNull(user);
     }
 
     @Override
@@ -189,13 +213,14 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public String extractTextFromPdf(Long documentId) throws IOException {
-        Document document = documentRepository.findById(documentId).orElseThrow(() -> new RuntimeException("Document Not Found"));
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document Not Found"));
         File file = new File(document.getFilePath());
-        if(!file.exists()){
+        if (!file.exists()) {
             throw new RuntimeException("File not found");
         }
 
-        try(PDDocument pdDocument = PDDocument.load(file)) {
+        try (PDDocument pdDocument = PDDocument.load(file)) {
             PDFTextStripper pdfStripper = new PDFTextStripper();
             return pdfStripper.getText(pdDocument);
         }
@@ -266,6 +291,7 @@ public class DocumentServiceImpl implements DocumentService {
         return result;
     }
 
+    @Override
     public Map<String, Object> extractDocumentMetadata(Long documentId) throws IOException {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new RuntimeException("Document not found"));
@@ -299,6 +325,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (collectionId != null) {
             collection = studyCollectionRepository.findById(collectionId)
                     .orElseThrow(() -> new RuntimeException("Collection not found"));
+
+            // Validate that the collection belongs to the same user as the document
+            if (!collection.getUser().getId().equals(document.getUser().getId())) {
+                throw new RuntimeException("Access denied: Collection does not belong to the document owner");
+            }
         }
 
         // Update document collection
@@ -336,6 +367,4 @@ public class DocumentServiceImpl implements DocumentService {
 
         return savedDocument;
     }
-
-
 }

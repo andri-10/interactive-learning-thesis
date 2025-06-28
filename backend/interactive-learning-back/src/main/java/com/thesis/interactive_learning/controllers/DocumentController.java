@@ -3,6 +3,7 @@ package com.thesis.interactive_learning.controllers;
 import com.thesis.interactive_learning.dto.BulkCollectionUpdateRequest;
 import com.thesis.interactive_learning.model.Document;
 import com.thesis.interactive_learning.model.Quiz;
+import com.thesis.interactive_learning.security.UserContext;
 import com.thesis.interactive_learning.service.DocumentService;
 import com.thesis.interactive_learning.repository.QuizRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,112 +23,169 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final QuizRepository quizRepository;
+    private final UserContext userContext;
 
     @Autowired
-    public DocumentController(DocumentService documentService, QuizRepository quizRepository) {
+    public DocumentController(DocumentService documentService, QuizRepository quizRepository, UserContext userContext) {
         this.documentService = documentService;
         this.quizRepository = quizRepository;
+        this.userContext = userContext;
     }
 
     @PostMapping("/upload")
-    public ResponseEntity<Document> uploadDocument(
+    public ResponseEntity<?> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @RequestParam("title") String title,
             @RequestParam("description") String description,
-            @RequestParam("userId") Long userId,
             @RequestParam(value = "collectionId", required = false) Long collectionId) {
 
-        System.out.println("=== UPLOAD REQUEST RECEIVED ===");
-        System.out.println("File: " + file.getOriginalFilename());
-        System.out.println("Title: " + title);
-        System.out.println("Description: " + description);
-        System.out.println("UserId: " + userId);
-        System.out.println("File size: " + file.getSize());
-        System.out.println("Collection ID: " + collectionId);
-
         try {
-            Document document = documentService.uploadDocument(file, title, description, userId, collectionId);
+            // Get current authenticated user instead of requiring userId parameter
+            Long currentUserId = userContext.getCurrentUserId();
+
+            System.out.println("=== UPLOAD REQUEST RECEIVED ===");
+            System.out.println("File: " + file.getOriginalFilename());
+            System.out.println("Title: " + title);
+            System.out.println("Description: " + description);
+            System.out.println("Current User ID: " + currentUserId);
+            System.out.println("File size: " + file.getSize());
+            System.out.println("Collection ID: " + collectionId);
+
+            Document document = documentService.uploadDocument(file, title, description, currentUserId, collectionId);
             return new ResponseEntity<>(document, HttpStatus.CREATED);
+
         } catch (IOException e) {
             System.out.println("IOException during upload: " + e.getMessage());
-            e.printStackTrace();
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "File upload failed: " + e.getMessage()));
         } catch (RuntimeException e) {
             System.out.println("RuntimeException during upload: " + e.getMessage());
-            e.printStackTrace();
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Document> getDocumentById(@PathVariable Long id) {
-        return documentService.getDocumentById(id)
-                .map(document -> new ResponseEntity<>(document, HttpStatus.OK))
-                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
+    public ResponseEntity<?> getDocumentById(@PathVariable Long id) {
+        try {
+            Document document = documentService.getDocumentById(id)
+                    .orElseThrow(() -> new RuntimeException("Document not found"));
+
+            // Validate user ownership
+            userContext.validateDocumentOwnership(document);
+
+            return ResponseEntity.ok(document);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping
     public ResponseEntity<List<Document>> getAllDocuments() {
-        List<Document> documents = documentService.getAllDocuments();
-        return new ResponseEntity<>(documents, HttpStatus.OK);
+        // Only return documents owned by current user
+        Long currentUserId = userContext.getCurrentUserId();
+        List<Document> documents = documentService.getDocumentsByUserId(currentUserId);
+        return ResponseEntity.ok(documents);
     }
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<Document>> getDocumentsByUserId(@PathVariable Long userId) {
+    public ResponseEntity<?> getDocumentsByUserId(@PathVariable Long userId) {
         try {
+            // Users can only access their own documents
+            userContext.validateCurrentUserOwnership(userId);
+
             List<Document> documents = documentService.getDocumentsByUserId(userId);
-            return new ResponseEntity<>(documents, HttpStatus.OK);
+            return ResponseEntity.ok(documents);
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
     @GetMapping("/collection/{collectionId}")
-    public ResponseEntity<List<Document>> getDocumentsByCollectionId(@PathVariable Long collectionId) {
-        List<Document> documents = documentService.getDocumentsByCollectionId(collectionId);
-        return new ResponseEntity<>(documents, HttpStatus.OK);
+    public ResponseEntity<?> getDocumentsByCollectionId(@PathVariable Long collectionId) {
+        try {
+            // Get current user's documents from the collection
+            Long currentUserId = userContext.getCurrentUserId();
+            List<Document> documents = documentService.getDocumentsByCollectionIdAndUserId(collectionId, currentUserId);
+            return ResponseEntity.ok(documents);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/{id}/text")
-    public ResponseEntity<String> extractTextFromDocument(@PathVariable Long id) {
+    public ResponseEntity<?> extractTextFromDocument(@PathVariable Long id) {
         try {
+            // Validate document ownership first
+            Document document = documentService.getDocumentById(id)
+                    .orElseThrow(() -> new RuntimeException("Document not found"));
+            userContext.validateDocumentOwnership(document);
+
             String text = documentService.extractTextFromPdf(id);
-            return new ResponseEntity<>(text, HttpStatus.OK);
+            return ResponseEntity.ok(text);
         } catch (IOException e) {
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to extract text: " + e.getMessage()));
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
     @GetMapping("/{id}/structured-text")
-    public ResponseEntity<Map<String, Object>> extractStructuredTextFromDocument(@PathVariable Long id) {
+    public ResponseEntity<?> extractStructuredTextFromDocument(@PathVariable Long id) {
         try {
+            // Validate document ownership first
+            Document document = documentService.getDocumentById(id)
+                    .orElseThrow(() -> new RuntimeException("Document not found"));
+            userContext.validateDocumentOwnership(document);
+
             Map<String, Object> structuredText = documentService.extractStructuredTextFromPdf(id);
-            return new ResponseEntity<>(structuredText, HttpStatus.OK);
+            return ResponseEntity.ok(structuredText);
         } catch (IOException e) {
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to extract structured text: " + e.getMessage()));
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
-
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteDocument(@PathVariable Long id) {
+    public ResponseEntity<?> deleteDocument(@PathVariable Long id) {
         try {
+            // Validate document ownership before deletion
+            Document document = documentService.getDocumentById(id)
+                    .orElseThrow(() -> new RuntimeException("Document not found"));
+            userContext.validateDocumentOwnership(document);
+
             documentService.deleteDocument(id);
-            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+            return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
     @PutMapping("/{id}/collection")
-    public ResponseEntity<Map<String, Object>> updateDocumentCollection(
+    public ResponseEntity<?> updateDocumentCollection(
             @PathVariable Long id,
             @RequestParam(required = false) Long collectionId) {
         try {
+            // Validate document ownership
+            Document document = documentService.getDocumentById(id)
+                    .orElseThrow(() -> new RuntimeException("Document not found"));
+            userContext.validateDocumentOwnership(document);
+
+            // If collectionId is provided, validate collection ownership
+            if (collectionId != null) {
+                // This will be implemented when we update collection service
+                // For now, we'll validate in the service layer
+            }
+
             Document updatedDocument = documentService.updateDocumentCollection(id, collectionId);
 
             // Get updated quiz count for response
@@ -138,39 +196,51 @@ public class DocumentController {
             response.put("updatedQuizzesCount", updatedQuizzes.size());
             response.put("message", "Document and " + updatedQuizzes.size() + " associated quizzes updated successfully");
 
-            return new ResponseEntity<>(response, HttpStatus.OK);
+            return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
     @DeleteMapping("/{id}/collection")
-    public ResponseEntity<Document> removeDocumentFromCollection(@PathVariable Long id) {
+    public ResponseEntity<?> removeDocumentFromCollection(@PathVariable Long id) {
         try {
+            // Validate document ownership
+            Document document = documentService.getDocumentById(id)
+                    .orElseThrow(() -> new RuntimeException("Document not found"));
+            userContext.validateDocumentOwnership(document);
+
             Document updatedDocument = documentService.removeDocumentFromCollection(id);
-            return new ResponseEntity<>(updatedDocument, HttpStatus.OK);
+            return ResponseEntity.ok(updatedDocument);
         } catch (RuntimeException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
     @GetMapping("/available")
     public ResponseEntity<List<Document>> getAvailableDocuments() {
-        List<Document> documents = documentService.getDocumentsByCollectionId(null);
-        return new ResponseEntity<>(documents, HttpStatus.OK);
+        // Only return current user's documents that are not in any collection
+        Long currentUserId = userContext.getCurrentUserId();
+        List<Document> documents = documentService.getAvailableDocumentsByUserId(currentUserId);
+        return ResponseEntity.ok(documents);
     }
 
-    // Add this to DocumentController.java
-
     @PostMapping("/bulk-collection-update")
-    public ResponseEntity<Map<String, Object>> bulkUpdateDocumentCollection(
+    public ResponseEntity<?> bulkUpdateDocumentCollection(
             @RequestBody BulkCollectionUpdateRequest request) {
         try {
             int documentsUpdated = 0;
             int quizzesUpdated = 0;
 
             for (Long documentId : request.getDocumentIds()) {
-                Document document = documentService.updateDocumentCollection(documentId, request.getCollectionId());
+                // Validate ownership of each document
+                Document document = documentService.getDocumentById(documentId)
+                        .orElseThrow(() -> new RuntimeException("Document not found: " + documentId));
+                userContext.validateDocumentOwnership(document);
+
+                Document updatedDoc = documentService.updateDocumentCollection(documentId, request.getCollectionId());
                 documentsUpdated++;
 
                 // Count associated quizzes that were also moved
@@ -184,11 +254,12 @@ public class DocumentController {
             response.put("message", String.format("Updated %d documents and %d quizzes", documentsUpdated, quizzesUpdated));
 
             return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to update documents: " + e.getMessage()));
         }
     }
-
-
 }
