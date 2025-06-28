@@ -33,6 +33,7 @@ public class SecurityConfig {
 //                        .requestMatchers("/api/test/**").permitAll()
 //                        .requestMatchers("/api/microbit/**").permitAll()
 //                        .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").permitAll()
                         .anyRequest().permitAll()
                 )
                 .sessionManagement(session -> session
