@@ -35,6 +35,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.post('/auth/login', { username, password });
       const { token, user: userInfo } = response.data;
+
+      console.log('Backend response userInfo:', userInfo);
       
       localStorage.setItem('token', token);
       
@@ -48,6 +50,9 @@ export const AuthProvider = ({ children }) => {
         createdAt: userInfo?.createdAt || new Date().toISOString(),
         lastLogin: new Date().toISOString()
       };
+
+       console.log('Final userData stored:', userData);
+      console.log('isAdmin check:', userData.role === 'ADMIN', userData.isAdmin);
       
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);

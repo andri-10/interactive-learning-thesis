@@ -124,7 +124,6 @@ public class User {
         this.statusChangeReason = reason;
     }
 
-
     public boolean canLogin() {
         return isEnabled() && !isAccountLocked();
     }

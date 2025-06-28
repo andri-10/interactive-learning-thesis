@@ -29,14 +29,7 @@ import AdminSecurity from './pages/AdminSecurity';
 // User Progress Page
 import UserProgress from './pages/UserProgress';
 
-
 import './styles/globals.css';
-
-// Simple PrivateRoute component for authenticated routes
-const PrivateRouteWrapper = ({ children }) => {
-  // For now, we'll assume PrivateRoute exists or create a simple version
-  return children; // You can implement proper auth checking here
-};
 
 function App() {
   return (
@@ -54,71 +47,71 @@ function App() {
               <Route 
                 path="/dashboard" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <Dashboard />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
               <Route 
                 path="/documents" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <Documents />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
               <Route 
                 path="/collections" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <Collections />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
               <Route 
                 path="/quizzes" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <Quizzes />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
               <Route 
                 path="/quiz/:quizId" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <QuizTaking />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
               <Route 
                 path="/quiz-results" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <QuizResults />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
               <Route 
                 path="/progress" 
                 element={
-                  <PrivateRouteWrapper>
+                  <PrivateRoute>
                     <PageTransition>
                       <UserProgress />
                     </PageTransition>
-                  </PrivateRouteWrapper>
+                  </PrivateRoute>
                 } 
               />
 

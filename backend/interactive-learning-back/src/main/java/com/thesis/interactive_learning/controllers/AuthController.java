@@ -68,7 +68,6 @@ public class AuthController {
                 return new ResponseEntity<>("Account is disabled", HttpStatus.FORBIDDEN);
             }
 
-
             if (user.isAccountLocked()) {
                 auditLogService.logLoginAttempt(
                         AuditLog.LogAction.LOGIN_FAILED,
@@ -78,7 +77,6 @@ public class AuthController {
                 return new ResponseEntity<>("Account is temporarily locked due to failed login attempts", HttpStatus.LOCKED);
             }
 
-
             if (auditLogService.checkSuspiciousActivity(getClientIp(), authRequest.getUsername())) {
                 auditLogService.logSecurityEvent(
                         AuditLog.LogAction.LOGIN_FAILED,
@@ -86,7 +84,6 @@ public class AuthController {
                 );
                 return new ResponseEntity<>("Too many failed attempts. Please try again later.", HttpStatus.TOO_MANY_REQUESTS);
             }
-
 
             try {
                 authenticationManager.authenticate(
@@ -123,7 +120,8 @@ public class AuthController {
             final UserDetails userDetails = userDetailsService.loadUserByUsername(authRequest.getUsername());
             final String jwt = jwtTokenUtil.generateToken(userDetails);
 
-            return ResponseEntity.ok(new AuthResponse(jwt));
+            // FIXED: Return both token AND user data
+            return ResponseEntity.ok(new AuthResponse(jwt, new UserDto(user)));
 
         } catch (Exception e) {
             auditLogService.logError("Login error for user: " + authRequest.getUsername() + " - " + e.getMessage());
@@ -166,7 +164,8 @@ public class AuthController {
             final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
             final String jwt = jwtTokenUtil.generateToken(userDetails);
 
-            return new ResponseEntity<>(new AuthResponse(jwt), HttpStatus.CREATED);
+            // FIXED: Return both token AND user data for registration too
+            return new ResponseEntity<>(new AuthResponse(jwt, new UserDto(savedUser)), HttpStatus.CREATED);
 
         } catch (Exception e) {
             auditLogService.logError("Registration error for user: " + user.getUsername() + " - " + e.getMessage());
@@ -184,10 +183,31 @@ public class AuthController {
 class AuthRequest {
     private String username;
     private String password;
-
 }
 
+record AuthResponse(String token, UserDto user) {
+}
 
-record AuthResponse(String token) {
+@Getter
+@Setter
+class UserDto {
+    private Long id;
+    private String username;
+    private String email;
+    private User.Role role;
+    private boolean enabled;
+    private boolean accountLocked;
+    private String createdAt;
+    private String lastLogin;
 
+    public UserDto(User user) {
+        this.id = user.getId();
+        this.username = user.getUsername();
+        this.email = user.getEmail();
+        this.role = user.getRole();
+        this.enabled = user.isEnabled();
+        this.accountLocked = user.isAccountLocked();
+        this.createdAt = user.getCreatedAt() != null ? user.getCreatedAt().toString() : null;
+        this.lastLogin = user.getLastLoginAt() != null ? user.getLastLoginAt().toString() : null;
+    }
 }
