@@ -1,7 +1,9 @@
 package com.thesis.interactive_learning.repository;
 
 import com.thesis.interactive_learning.model.UserProgress;
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -32,5 +34,8 @@ public interface UserProgressRepository extends JpaRepository<UserProgress, Long
     @Query("SELECT up FROM UserProgress up WHERE up.user.id = :userId AND up.completedAt >= :startDate")
     List<UserProgress> findByUserIdAndCompletedAtAfter(@Param("userId") Long userId, @Param("startDate") java.time.LocalDateTime startDate);
 
-    void deleteByQuizId(Long id);
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM UserProgress up WHERE up.quiz.id = :quizId")
+    int deleteByQuizId(@Param("quizId") Long quizId);
 }

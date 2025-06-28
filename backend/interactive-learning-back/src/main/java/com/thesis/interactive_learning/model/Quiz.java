@@ -16,8 +16,6 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-@EqualsAndHashCode(exclude = {"studyCollection", "questions", "document"})
-@ToString(exclude = {"studyCollection", "questions", "document"})
 public class Quiz {
 
     @Id
@@ -41,12 +39,29 @@ public class Quiz {
     @JsonIgnoreProperties({"quizzes", "documents", "user"})
     private StudyCollection studyCollection;
 
-    @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnoreProperties({"quiz"})
     private Set<Question> questions = new HashSet<>();
+
+    @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({"quiz", "user"})
+    private Set<UserProgress> userProgress = new HashSet<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "document_id")
     @JsonIgnoreProperties({"quizzes", "user", "studyCollection"})
     private Document document;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Quiz)) return false;
+        Quiz quiz = (Quiz) o;
+        return id != null && id.equals(quiz.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return id != null ? id.hashCode() : 0;
+    }
 }

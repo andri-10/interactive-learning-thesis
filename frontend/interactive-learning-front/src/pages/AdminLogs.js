@@ -33,6 +33,8 @@ const AdminLogs = () => {
     userId: ''
   });
 
+  const safeLogs = Array.isArray(logs) ? logs : [];
+
   const logTabs = [
     { 
       id: 'recent', 
@@ -55,13 +57,6 @@ const AdminLogs = () => {
       endpoint: '/admin/logs/admin-actions',
       description: 'Administrative actions and changes'
     },
-    { 
-      id: 'user', 
-      label: 'User Activity', 
-      icon: Activity,
-      endpoint: '/admin/logs/user',
-      description: 'User interactions and content activities'
-    }
   ];
 
   useEffect(() => {
@@ -69,43 +64,90 @@ const AdminLogs = () => {
   }, [activeTab, currentPage, filters]);
 
   const fetchLogs = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      const currentTabConfig = logTabs.find(tab => tab.id === activeTab);
-      const params = new URLSearchParams({
-        page: currentPage - 1,
-        size: logsPerPage,
-        ...(filters.search && { search: filters.search }),
-        ...(filters.logType !== 'all' && { type: filters.logType }),
-        ...(filters.severity !== 'all' && { severity: filters.severity }),
-        ...(filters.dateRange !== 'all' && { range: filters.dateRange }),
-        ...(filters.userId && { userId: filters.userId })
-      });
+  try {
+    setLoading(true);
+    setError('');
+    
+    const currentTabConfig = logTabs.find(tab => tab.id === activeTab);
+    let endpoint = currentTabConfig.endpoint;
+    
+    // Build query parameters
+    const params = new URLSearchParams({
+      page: currentPage - 1,
+      size: logsPerPage,
+      ...(filters.search && { search: filters.search }),
+      ...(filters.logType !== 'all' && { type: filters.logType }),
+      ...(filters.severity !== 'all' && { severity: filters.severity }),
+      ...(filters.dateRange !== 'all' && { range: filters.dateRange }),
+      ...(filters.userId && { userId: filters.userId })
+    });
 
-      const response = await api.get(`${currentTabConfig.endpoint}?${params}`);
-      
-      if (response.data.content) {
-        setLogs(response.data.content);
-        setTotalLogs(response.data.totalElements);
-      } else {
-        setLogs(response.data || []);
-        setTotalLogs(response.data?.length || 0);
-      }
-
-    } catch (error) {
-      console.error('Error fetching logs:', error);
-      setError('Failed to load logs');
-      
-      // Mock data for development
-      const mockLogs = generateMockLogs(activeTab);
-      setLogs(mockLogs);
-      setTotalLogs(mockLogs.length);
-    } finally {
-      setLoading(false);
+    // Special handling for user activity logs
+    if (activeTab === 'user' && filters.userId) {
+      endpoint = `/admin/logs/user/${filters.userId}`;
     }
-  };
+
+    console.log('🔍 Fetching logs from:', `${endpoint}?${params}`);
+    const response = await api.get(`${endpoint}?${params}`);
+    console.log('🔍 API response:', response.data);
+    
+    // Handle different response structures from your backend
+    let logsData = [];
+    let total = 0;
+    
+    if (response.data) {
+      // Check for paginated response structure
+      if (response.data.content && Array.isArray(response.data.content)) {
+        logsData = response.data.content;
+        total = response.data.totalElements || response.data.content.length;
+      }
+      // Check for logs array in response
+      else if (response.data.logs && Array.isArray(response.data.logs)) {
+        logsData = response.data.logs;
+        total = response.data.totalElements || response.data.logs.length;
+      }
+      // Check if response.data is directly an array
+      else if (Array.isArray(response.data)) {
+        logsData = response.data;
+        total = response.data.length;
+      }
+      // Check for other possible structures from your AdminController
+      else if (response.data.recentLogs && Array.isArray(response.data.recentLogs)) {
+        logsData = response.data.recentLogs;
+        total = response.data.totalCount || response.data.recentLogs.length;
+      }
+      else {
+        console.warn('Unexpected API response structure:', response.data);
+        // Try to extract any array from the response
+        const possibleArrays = Object.values(response.data).filter(value => Array.isArray(value));
+        if (possibleArrays.length > 0) {
+          logsData = possibleArrays[0];
+          total = logsData.length;
+        } else {
+          throw new Error('No logs array found in response');
+        }
+      }
+    }
+    
+    console.log('🔍 Processed logs data:', logsData);
+    console.log('🔍 Total logs:', total);
+    
+    setLogs(logsData);
+    setTotalLogs(total);
+
+  } catch (error) {
+    console.error('Error fetching logs:', error);
+    console.error('Error details:', error.response?.data);
+    setError('Failed to load logs');
+    
+    // Mock data for development
+    const mockLogs = generateMockLogs(activeTab);
+    setLogs(mockLogs);
+    setTotalLogs(mockLogs.length);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const generateMockLogs = (tabType) => {
     const baseTime = new Date();
@@ -409,7 +451,7 @@ const AdminLogs = () => {
 
             {/* Logs Viewer */}
             <LogsViewer
-              logs={logs}
+              logs={safeLogs}
               loading={loading}
               logType={activeTab}
             />

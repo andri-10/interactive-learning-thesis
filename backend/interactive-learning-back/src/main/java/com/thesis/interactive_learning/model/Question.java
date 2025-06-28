@@ -15,8 +15,6 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-@EqualsAndHashCode(exclude = {"quiz", "options"})
-@ToString(exclude = {"quiz"})
 public class Question {
 
     @Id
@@ -53,4 +51,17 @@ public class Question {
 
     @Column(length = 50)
     private String questionType;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Question)) return false;
+        Question question = (Question) o;
+        return id != null && id.equals(question.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return id != null ? id.hashCode() : 0;
+    }
 }

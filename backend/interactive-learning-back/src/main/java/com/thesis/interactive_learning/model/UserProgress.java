@@ -51,4 +51,17 @@ public class UserProgress {
             this.accuracyPercentage = 0.0;
         }
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof UserProgress)) return false;
+        UserProgress that = (UserProgress) o;
+        return id != null && id.equals(that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return id != null ? id.hashCode() : 0;
+    }
 }

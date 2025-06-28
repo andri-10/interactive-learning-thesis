@@ -411,34 +411,6 @@ const UserProgress = () => {
               <div style={{
                 padding: '12px',
                 borderRadius: '12px',
-                backgroundColor: 'var(--secondary)',
-                color: 'white',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '12px'
-              }}>
-                <Clock size={20} />
-              </div>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: '4px' }}>
-                {Math.floor((progressData?.dashboard?.totalTime || 0) / 60)}h
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Study Time
-              </div>
-            </div>
-
-            <div style={{
-              padding: '20px',
-              backgroundColor: 'var(--surface)',
-              borderRadius: '16px',
-              border: '1px solid var(--border)',
-              textAlign: 'center',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
-            }}>
-              <div style={{
-                padding: '12px',
-                borderRadius: '12px',
                 backgroundColor: 'var(--accent)',
                 color: 'white',
                 display: 'inline-flex',
