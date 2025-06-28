@@ -1,4 +1,3 @@
-// frontend/interactive-learning-front/src/services/microbitWebSocket.js
 import SockJS from 'sockjs-client';
 
 class MicrobitWebSocketService {
@@ -10,12 +9,15 @@ class MicrobitWebSocketService {
     this.reconnectInterval = 3000;
     this.listeners = new Map();
     this.reconnectTimeout = null;
+    
+    
+    this.wsUrl = process.env.REACT_APP_WS_URL || 'http://localhost:8080/ws/microbit';
   }
 
   connect() {
     try {
-      // Use SockJS for better browser compatibility
-      this.socket = new SockJS('http://localhost:8080/ws/microbit');
+     
+      this.socket = new SockJS(this.wsUrl);
       
       this.socket.onopen = () => {
         console.log('WebSocket connected to micro:bit service');
@@ -23,7 +25,7 @@ class MicrobitWebSocketService {
         this.reconnectAttempts = 0;
         this.emit('connection', { connected: true });
         
-        // Send ping to verify connection
+      
         this.sendPing();
       };
 
@@ -42,7 +44,6 @@ class MicrobitWebSocketService {
         this.connected = false;
         this.emit('connection', { connected: false, reason: event.reason });
         
-        // Attempt to reconnect if it wasn't a manual close
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.scheduleReconnect();
         }
@@ -170,7 +171,6 @@ class MicrobitWebSocketService {
     }
   }
 
- 
   isConnected() {
     return this.connected;
   }
@@ -183,7 +183,6 @@ class MicrobitWebSocketService {
     };
   }
 }
-
 
 const microbitWebSocketService = new MicrobitWebSocketService();
 
