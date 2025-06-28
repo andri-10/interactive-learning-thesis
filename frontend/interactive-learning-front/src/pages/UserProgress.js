@@ -30,26 +30,254 @@ const UserProgress = () => {
     fetchProgressData();
   }, []);
 
+  // Helper functions to extract and format data
+  const extractWeeklyProgress = (monthlyProgress) => {
+    if (!monthlyProgress) return [0, 0, 0, 0, 0, 0, 0];
+    
+    // Extract last 7 days from monthly progress
+    const recent = Object.values(monthlyProgress).slice(-7);
+    return recent.map(item => item?.averageAccuracy || 0);
+  };
+  
+  const extractMonthlyActivity = (monthlyProgress) => {
+    if (!monthlyProgress) return {
+      labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+      quizzes: [0, 0, 0, 0],
+      time: [0, 0, 0, 0]
+    };
+    
+    const entries = Object.entries(monthlyProgress).slice(-4);
+    return {
+      labels: entries.map(([key]) => key),
+      quizzes: entries.map(([, value]) => value?.quizCount || 0),
+      time: entries.map(([, value]) => Math.round((value?.totalTime || 0) / 60))
+    };
+  };
+  
+  const extractSubjectPerformance = (quizPerformance) => {
+    if (!quizPerformance) return [];
+    
+    return Object.entries(quizPerformance).map(([subject, data]) => ({
+      subject: subject,
+      score: Math.round(data?.averageScore || 0),
+      count: data?.quizCount || 0
+    }));
+  };
+  
+  const extractAccuracyTrend = (progressList) => {
+    if (!progressList || progressList.length === 0) return [];
+    
+    // Get last 7 quiz scores
+    return progressList
+      .slice(-7)
+      .map(progress => progress.score || 0);
+  };
+  
+  const formatProgressAsActivity = (progress) => {
+    return {
+      id: progress.id,
+      type: 'quiz_completed',
+      title: progress.quiz?.title || 'Quiz',
+      description: `Completed with ${progress.score || 0}% score`,
+      score: progress.score || 0,
+      completedAt: progress.completedAt,
+      duration: Math.round((progress.completionTimeSeconds || 0) / 60),
+      action: 'completed'
+    };
+  };
+
   const fetchProgressData = async () => {
-  try {
-    setLoading(true);
-    setError('');
-    
-    console.log('=== FRONTEND API DEBUG ===');
-    console.log('Token in localStorage:', localStorage.getItem('token'));
-    console.log('Making API calls...');
-    
-    // Test with a simple call first
-    console.log('Testing /api/progress...');
-    const testResponse = await api.get('/progress');
-    console.log('✅ /api/progress works:', testResponse.data);
-    
-    // Rest of your API calls...
-  } catch (error) {
-    console.error('❌ API Error:', error);
-    console.error('Error response:', error.response?.data);
-  }
-};
+    try {
+      setLoading(true);
+      setError('');
+      
+      console.log('=== FRONTEND API DEBUG ===');
+      console.log('Token in localStorage:', localStorage.getItem('token'));
+      console.log('Current user:', user);
+      
+      // First test - check if authentication is working with debug endpoint
+      console.log('Testing authentication with debug endpoint...');
+      try {
+        const debugResponse = await api.get('/progress/debug');
+        console.log('✅ Authentication working:', debugResponse.data);
+      } catch (debugError) {
+        console.log('❌ Debug endpoint failed:', debugError.response?.status, debugError.response?.data);
+        
+        // If debug fails, authentication is broken - try to re-login
+        if (debugError.response?.status === 403) {
+          setError('Authentication expired. Please log in again.');
+          // Optionally redirect to login
+          // setTimeout(() => window.location.href = '/login', 3000);
+          return;
+        }
+      }
+      
+      // Start with basic progress endpoint that we know exists
+      console.log('Testing basic /api/progress endpoint...');
+      const basicProgressResponse = await api.get('/progress');
+      console.log('✅ Basic progress successful:', basicProgressResponse.data);
+      
+      // Get stats data which we know works
+      console.log('Getting stats data...');
+      const statsResponse = await api.get('/progress/stats');
+      console.log('✅ Stats successful:', statsResponse.data);
+      
+      // Try optional endpoints
+      const [dashboardResponse, recentResponse] = await Promise.allSettled([
+        api.get('/progress/dashboard'),
+        api.get('/progress/recent?limit=10')
+      ]);
+      
+      // Build dashboard data from stats and basic progress
+      const progressList = basicProgressResponse.data || [];
+      const statsData = statsResponse.data || {};
+      
+      const dashboardData = {
+        totalQuizzes: statsData.totalAttempts || progressList.length || 0,
+        averageScore: Math.round(statsData.averageAccuracy || 0),
+        totalTime: Math.round((statsData.averageCompletionTime || 0) / 60), // convert seconds to minutes
+        streak: 0, // Not available in current stats
+        level: statsData.totalAttempts > 20 ? 'Advanced' : 
+               statsData.totalAttempts > 10 ? 'Intermediate' : 'Beginner',
+        achievements: Math.floor(statsData.totalAttempts / 5), // 1 achievement per 5 quizzes
+        completionRate: Math.round(statsData.averageAccuracy || 0),
+        studyProgress: Math.min(100, Math.round((statsData.totalAttempts || 0) * 10)), // Progress based on attempts
+        studyGoal: 30,
+        weeklyProgress: extractWeeklyProgress(statsData.monthlyProgress) || [0, 0, 0, 0, 0, 0, 0],
+        monthlyActivity: extractMonthlyActivity(statsData.monthlyProgress) || {
+          labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+          quizzes: [0, 0, 0, 0],
+          time: [0, 0, 0, 0]
+        }
+      };
+      
+      // Build response from available data
+      const combinedData = {
+        dashboard: dashboardData,
+        stats: {
+          subjectPerformance: extractSubjectPerformance(statsData.quizPerformance) || [],
+          accuracyTrend: extractAccuracyTrend(progressList) || [],
+          avgAccuracy: statsData.averageAccuracy || 0,
+          totalAttempts: statsData.totalAttempts || 0,
+          monthlyProgress: statsData.monthlyProgress || {}
+        },
+        recentActivity: progressList.slice(0, 10).map(formatProgressAsActivity) || []
+      };
+      
+      // Handle optional dashboard endpoint if it returns different data
+      if (dashboardResponse.status === 'fulfilled') {
+        console.log('✅ Dashboard API successful:', dashboardResponse.value.data);
+        const backendDashboard = dashboardResponse.value.data;
+        
+        // Merge with our calculated dashboard, preferring backend data
+        combinedData.dashboard = {
+          ...dashboardData,
+          ...backendDashboard,
+          // Ensure numeric values
+          totalQuizzes: backendDashboard.totalQuizzes || dashboardData.totalQuizzes,
+          averageScore: Math.round(backendDashboard.averageScore || dashboardData.averageScore),
+          totalTime: Math.round((backendDashboard.totalTime || dashboardData.totalTime * 60) / 60)
+        };
+      }
+      
+      // Handle recent activity
+      if (recentResponse.status === 'fulfilled') {
+        console.log('✅ Recent API successful:', recentResponse.value.data);
+        combinedData.recentActivity = recentResponse.value.data;
+      } else {
+        console.log('❌ Recent API failed:', recentResponse.reason?.response?.status);
+        // Use formatted progress data as recent activity
+      }
+      
+      setProgressData(combinedData);
+      setError('');
+      return; // Success - exit here
+      
+    } catch (error) {
+      console.error('❌ All API calls failed, using mock data:', error);
+      setError('Unable to load live data from server');
+      
+      // Set comprehensive mock data when API fails
+      const mockData = {
+        dashboard: {
+          totalQuizzes: 24,
+          averageScore: 82.5,
+          totalTime: 360, // minutes
+          streak: 5,
+          level: 'Intermediate',
+          achievements: 8,
+          completionRate: 87.3,
+          studyProgress: 65,
+          studyGoal: 30,
+          weeklyProgress: [85, 78, 92, 76, 88, 94, 82],
+          monthlyActivity: {
+            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+            quizzes: [6, 8, 5, 7],
+            time: [120, 180, 90, 150]
+          }
+        },
+        stats: {
+          subjectPerformance: [
+            { subject: 'Mathematics', score: 85, count: 8 },
+            { subject: 'Physics', score: 78, count: 6 },
+            { subject: 'Chemistry', score: 82, count: 5 },
+            { subject: 'History', score: 88, count: 5 }
+          ],
+          accuracyTrend: [75, 80, 85, 82, 88, 91, 87]
+        },
+        recentActivity: [
+          {
+            id: 1,
+            type: 'quiz_completed',
+            title: 'Advanced Mathematics Quiz',
+            description: 'Completed with 85% score',
+            score: 85,
+            completedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+            duration: 15,
+            action: 'completed'
+          },
+          {
+            id: 2,
+            type: 'document_uploaded',
+            title: 'Physics Study Notes',
+            description: 'Uploaded new study material',
+            completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            action: 'uploaded'
+          },
+          {
+            id: 3,
+            type: 'achievement_earned',
+            title: 'Quiz Master',
+            description: 'Completed 20 quizzes',
+            completedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+            action: 'earned'
+          },
+          {
+            id: 4,
+            type: 'quiz_completed',
+            title: 'Chemistry Basics',
+            description: 'Completed with 76% score',
+            score: 76,
+            completedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+            duration: 18,
+            action: 'completed'
+          },
+          {
+            id: 5,
+            type: 'collection_created',
+            title: 'Science Materials',
+            description: 'Created new study collection',
+            completedAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+            action: 'created'
+          }
+        ]
+      };
+      
+      setProgressData(mockData);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
