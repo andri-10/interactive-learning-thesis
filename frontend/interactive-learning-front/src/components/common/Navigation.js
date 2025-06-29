@@ -143,7 +143,8 @@ const Navigation = () => {
         {user && (
           <div style={{
             display: 'flex',
-            gap: '8px',
+            gap: '10px',
+            flexWrap: 'wrap',
             alignItems: 'center'
           }}>
             {/* Regular Navigation Items */}

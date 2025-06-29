@@ -53,3 +53,26 @@ body {
 .btn-primary:hover {
   background-color: var(--primary-dark);
 }
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 12px;
+  }
+  
+  .card {
+    padding: 16px;
+  }
+  
+  .btn-primary {
+    padding: 14px 20px;
+    min-height: 44px;
+  }
+  
+  h1 {
+    font-size: 28px !important;
+  }
+  
+  [style*="padding: 20px 24px"] {
+    padding: 16px 20px !important;
+  }
+}
