@@ -168,7 +168,7 @@ function App() {
               />
               
               {/* Catch all route - redirect to dashboard if authenticated, otherwise to landing */}
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<NotFoundHandler />} />
             </Routes>
           </div>
         </MicrobitProvider>
