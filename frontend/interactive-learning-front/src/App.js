@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { MicrobitProvider } from './context/MicrobitContext';
 import PrivateRoute from './components/common/PrivateRoute';
 import AdminRoute from './components/common/AdminRoute';
+import NotFoundHandler from './components/common/NotFoundHandler';
 import PageTransition from './components/common/PageTransition';
 
 // Auth Components
